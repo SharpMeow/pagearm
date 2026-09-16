@@ -14,9 +14,11 @@
   personal runtime    Mac · Windows · Linux
 ```
 
-Hey. This is a little runtime I kept for myself, and now for you.
+Hey. This is a personal inject-and-hot-swap runtime I kept for myself, and now for you.
 
-You load unpacked a skinny Chrome shell one time. After that, the code that actually runs in the tab is not those files on disk. It is a script your desk serves at `/agent.js`. Edit. Hit save. Open a page. The service worker fetches the script, hashes it, and either drops the new code into the tab or just calls `arm()` again if nothing changed.
+You install a thin Chrome extension one time (Load unpacked). That folder is only the shell. The JavaScript that actually runs in the tab does not live in those files. It lives on a local page we call the desk, served at `/agent.js`.
+
+Edit the agent. Hit save. Open a site. Chrome fetches that script and hashes it. New hash: inject the new code into the page. Same hash: just call `arm()` again. You never reinstall. You never re-drag a bookmark.
 
 ```
                     you, tinkering
