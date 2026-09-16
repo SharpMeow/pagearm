@@ -1,0 +1,16 @@
+{
+  "name": "pagearm",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "PageArm. A personal Chrome runtime for Mac, Windows, and Linux: install a thin shell once, keep the agent on a URL.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "pack": "node scripts/pack.mjs",
+    "check": "node --check scripts/serve.mjs && node --check scripts/pack.mjs && node --check scripts/zip.mjs && node --check extension/background.js && node --check extension/inject.js && node --check extension/bridge.js"
+  }
+}

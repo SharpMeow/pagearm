@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+dist/
+*.log
+agents/current.js
+desk/.origin
+.idea/
+.vscode/
