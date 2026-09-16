@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PageArm</title>
+    <link rel="stylesheet" href="/desk.css" />
+  </head>
+  <body>
+    <header>
+      <p class="kicker">Personal Chrome runtime · Mac, Windows, Linux</p>
+      <h1>PageArm</h1>
+      <p class="lede">
+        Install a thin shell once. After that the agent is this URL, not the files on disk. Same zip on Apple Silicon, Intel Macs, Windows, and Linux. Chrome, Edge, Brave, or Chromium. Save, open a tab, the service worker hashes <code>/agent.js</code> and hot-swaps MAIN-world code if it changed. Desk down: the packed copy still runs.
+      </p>
+    </header>
+
+    <main>
+      <section class="editor-panel">
+        <div class="row">
+          <h2>Agent</h2>
+          <div class="examples" id="examples"></div>
+        </div>
+        <textarea id="source" spellcheck="false" aria-label="Agent source"></textarea>
+        <div class="row">
+          <button type="button" id="save">Save agent</button>
+          <span id="save-state" class="muted"></span>
+        </div>
+      </section>
+
+      <aside>
+        <section>
+          <h2>Install</h2>
+          <ol>
+            <li>Mac, Windows, or Linux. Chrome, Edge, Brave, or Chromium. Not Safari. Not Firefox.</li>
+            <li>Download the zip. Unzip it. Keep the folder that contains <code>manifest.json</code> (Windows Extract All sometimes nests an extra folder).</li>
+            <li><code>chrome://extensions</code> or <code>edge://extensions</code> → Developer mode → Load unpacked.</li>
+            <li>Pin <strong>P</strong>. Hover is P. Green means the agent armed.</li>
+            <li>Keep this desk open at <code>127.0.0.1</code> while you edit. No reinstall. No re-drag.</li>
+          </ol>
+          <label class="muted" for="hosts">Host patterns (repack after changing)</label>
+          <textarea id="hosts" rows="4" spellcheck="false">https://*/*
+http://127.0.0.1/*
+http://localhost/*</textarea>
+          <a id="download" class="button" href="/extension.zip">Download extension</a>
+        </section>
+        <section>
+          <h2>Why a runtime</h2>
+          <p class="muted">
+            Bookmarklets need a re-drag. Store extensions wait for review. A normal Load-unpacked folder still is the agent, so every edit is an extension Reload. PageArm installs the shell once and keeps the agent on this desk. Hash matches: it just calls <code>arm()</code>. Hash changed: it evals the new source into the page, all frames, MAIN world.
+          </p>
+        </section>
+        <section>
+          <h2>For software and AI agents</h2>
+          <p class="muted">
+            Put PageArm in a project when the work has to happen in a tab the human already logged into, and the agent will change more often than the hosts. The shell stays frozen. You keep shipping <code>/agent.js</code>. Use it for internal admin, daily forms, a companion next to software you already ship. Skip it for Store listings, stealth, headless farms, or a drawer of fifty scripts. Coding agents: read <code>AGENTS.md</code> and the README section with the same name.
+          </p>
+        </section>
+        <section>
+          <h2>How hot-swap works</h2>
+          <p class="muted">
+            The installed shell fetches <code>/agent.js</code>, hashes it, and evals it into MAIN world if the hash is new. Same hash: it just calls <code>agent.arm()</code>. Desk down: packed <code>inject.js</code> still runs. Changing hosts still needs a new zip. Chrome, not the desk, owns <code>host_permissions</code>.
+          </p>
+        </section>
+      </aside>
+    </main>
+    <script src="/desk.js"></script>
+  </body>
+</html>
