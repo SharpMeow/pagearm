@@ -3,12 +3,12 @@
 **Personal inject-and-hot-swap runtime.** Load a thin Chrome shell once. After that the agent is a URL. You arm the page.
 
 ```
-  ____                         _
- |  _ \ __ _  __ _  ___       / \   _ __ _ __ ___
- | |_) / _` |/ _` |/ _ \     / _ \ | '__| '_ ` _ \
- |  __/ (_| | (_| |  __/    / ___ \| |  | | | | |
- |_|   \__,_|\__, |\___|   /_/   \_\_|  |_| |_| |_|
-             |___/
+ ____                     _
+|  _ \ __ _  __ _  ___   / \   _ __ _ __ ___
+| |_) / _` |/ _` |/ _ \ / _ \ | '__| '_ ` _ \
+|  __/ (_| | (_| |  __// ___ \| |  | | | | | |
+|_|   \__,_|\__, |\___/_/   \_\_|  |_| |_| |_|
+            |___/
 
   inject. hash. hot-swap.
   personal runtime    Mac · Windows · Linux
