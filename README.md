@@ -1,15 +1,17 @@
 # PageArm
 
+**Personal inject-and-hot-swap runtime.** Load a thin Chrome shell once. After that the agent is a URL. You arm the page.
+
 ```
   ____                         _
  |  _ \ __ _  __ _  ___       / \   _ __ _ __ ___
  | |_) / _` |/ _` |/ _ \     / _ \ | '__| '_ ` _ \
- |  __/ (_| | (_| |  __/    / ___ \| |  | | | | | |
+ |  __/ (_| | (_| |  __/    / ___ \| |  | | | | |
  |_|   \__,_|\__, |\___|   /_/   \_\_|  |_| |_| |_|
              |___/
 
-  The agent is a URL. You arm the page.
-  Personal Chrome Runtime    Mac · Windows · Linux
+  inject. hash. hot-swap.
+  personal runtime    Mac · Windows · Linux
 ```
 
 Hey. This is a little runtime I kept for myself, and now for you.
