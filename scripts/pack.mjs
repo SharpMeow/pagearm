@@ -54,12 +54,12 @@ export function packExtension({ origin, hosts, agentSource }) {
   const inject = wrapAgent(agentSource || readFileSync(join(root, "agents/hello.js"), "utf8"));
   const bridge = readFileSync(join(root, "extension/bridge.js"), "utf8");
   const readme = `
-  ____                         _
- |  _ \\ __ _  __ _  ___       / \\   _ __ _ __ ___
- | |_) / _\` |/ _\` |/ _ \\     / _ \\ | '__| '_ \` _ \\
- |  __/ (_| | (_| |  __/    / ___ \\| |  | | | | | |
- |_|   \\__,_|\\__, |\\___|   /_/   \\_\\_|  |_| |_| |_|
-             |___/
+ ____                     _
+|  _ \\ __ _  __ _  ___   / \\   _ __ _ __ ___
+| |_) / _\` |/ _\` |/ _ \\ / _ \\ | '__| '_ \` _ \\
+|  __/ (_| | (_| |  __// ___ \\| |  | | | | | |
+|_|   \\__,_|\\__, |\\___/_/   \\_\\_|  |_| |_| |_|
+            |___/
 
   personal chrome runtime    Mac · Windows · Linux
 
