@@ -14,11 +14,12 @@
   personal runtime    Mac · Windows · Linux
 ```
 
-Hey. This is a personal inject-and-hot-swap runtime I kept for myself, and now for you.
+Install a thin Chrome extension one time (Load unpacked). That folder is only the shell. The JavaScript that actually runs in the tab does not live in those files. It lives on a local page called the desk, served at `/agent.js`.
 
-You install a thin Chrome extension one time (Load unpacked). That folder is only the shell. The JavaScript that actually runs in the tab does not live in those files. It lives on a local page called the desk, served at `/agent.js`.
+Edit the agent. Hit save. Open a site. Chrome fetches that script and hashes it. 
 
-Edit the agent. Hit save. Open a site. Chrome fetches that script and hashes it. New hash: inject the new code into the page. Same hash: just call `arm()` again. You never reinstall. You never re-drag a bookmark.
+New hash: inject the new code into the page.
+Same hash: just call `arm()` again. You never reinstall. You never re-drag a bookmark.
 
 ```
                     you, tinkering
