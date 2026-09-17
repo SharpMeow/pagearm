@@ -23,7 +23,7 @@ The user Load-unpacks a thin MV3 shell once. After that, the living code is `GET
 - Agent source lives in `agents/` and on the desk textarea. `scripts/wrap.mjs` is the boring IIFE. Do not clever it up.
 - Host pattern changes need a new zip and an extension Reload. Hot-swap cannot invent `host_permissions`.
 - Toolbar letter is **P**. Message source is `pa`. Globals: `__pagearm`, `__agent`, `__PA_ORIGIN`, `__PA_VER`.
-- License is proprietary. Do not relicense as MIT. Do not add analytics. Do not claim the page cannot see you.
+- License is Business Source License 1.1. Do not relicense as MIT. Do not add analytics. Do not claim the page cannot see you.
 - American English. No em dashes. Warm comments.
 - One zip for Mac, Windows, and Linux. Do not add a .app, an .exe, or a distro package.
 

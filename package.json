@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "PageArm. A personal Chrome runtime for Mac, Windows, and Linux: install a thin shell once, keep the agent on a URL.",
-  "license": "UNLICENSED",
+  "license": "BUSL-1.1",
   "engines": {
     "node": ">=18"
   },
