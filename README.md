@@ -1,6 +1,6 @@
 # PageArm
 
-**Personal inject-and-hot-swap runtime.** Load a thin Chrome shell once. After that the agent is a URL. You arm the page.
+**Inject-and-hot-swap runtime.** Load a thin Chrome shell once. After that the agent is a URL. You arm the page.
 
 ```
  ____                     _
