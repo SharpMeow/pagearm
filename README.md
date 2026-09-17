@@ -43,7 +43,7 @@ Same hash: just call `arm()` again. You never reinstall. You never re-drag a boo
 
 Pin **P** in the toolbar. Green means you are armed. Gold means it is thinking. Red means your `arm()` threw, and the console will tell you why, gently. A little badge is there if you want to flash a count. Hover text is just P. Nobody walking by needs to know what it is.
 
-PageArm is proprietary. Keep it for yourself or your team. Do not publish it as a Store listing or a clone.
+PageArm uses the Business Source License 1.1. Use it yourself. Do not ship it as a Store listing or a competing product. See `LICENSE`.
 
 ---
 
@@ -198,7 +198,7 @@ Bad days:
 - Fifty independent scripts with their own match rules.
 - Driving Chrome from another machine.
 
-Starter agents in `agents/`. They are small on purpose:
+Starter agents in `agents/` . They are small on purpose:
 
 - `hello.js` says hi, logs the title, pips green. A handshake.
 - `highlight-headings.js` outlines `h1` through `h3`, badge is the count.
@@ -263,4 +263,4 @@ Writes a zip of the Load-unpacked folder. Same bytes the desk download button se
 
 ## License
 
-Proprietary. See `LICENSE`. All rights reserved. Use it. Keep it close. Do not flip it into a Store clone.
+Business Source License 1.1. See `LICENSE`. Production use for yourself is fine. Do not offer PageArm, or a derivative, as a competing product, hosted service, or Web Store listing. On 2030-09-16 this version becomes GPL-2.0-or-later.
