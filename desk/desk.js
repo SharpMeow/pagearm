@@ -31,17 +31,38 @@ async function loadExamples() {
       source.value = ex.source;
       saveState.textContent = "unsaved example";
     });
+    examplesEl.appendChild(b);
   });
 }
 
-saveBtn.addEventListener("click", async () => {
+async function save() {
   saveState.textContent = "saving…";
-  await fetch("/api/agent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: source.value }),
-  });
-  saveState.textContent = "saved. open or reload a tab.";
+  try {
+    const r = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: source.value }),
+    });
+    let data = {};
+    try { data = await r.json(); } catch (e) {}
+    if (!r.ok) {
+      saveState.textContent = "not saved: " + (data.error || r.status);
+      return;
+    }
+    saveState.textContent = "saved. open or reload a tab.";
+  } catch (e) {
+    saveState.textContent = "not saved: desk unreachable";
+  }
+}
+
+saveBtn.addEventListener("click", save);
+
+// Cmd+S / Ctrl+S saves the agent instead of the page.
+document.addEventListener("keydown", (ev) => {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") {
+    ev.preventDefault();
+    save();
+  }
 });
 
 load().catch(() => {

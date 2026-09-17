@@ -33,9 +33,20 @@ const PREFIX = `(function () {
   function type(el, text) {
     if (!el) return;
     try {
-      var proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      var desc = Object.getOwnPropertyDescriptor(proto, "value");
-      if (desc && desc.set) desc.set.call(el, text); else el.value = text;
+      var tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        // Go through the prototype setter so React and friends notice the change.
+        var proto = tag === "TEXTAREA" ? HTMLTextAreaElement.prototype
+          : tag === "SELECT" ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype;
+        var desc = Object.getOwnPropertyDescriptor(proto, "value");
+        if (desc && desc.set) desc.set.call(el, text); else el.value = text;
+      } else if (el.isContentEditable) {
+        el.focus();
+        el.textContent = text;
+      } else {
+        el.value = text;
+      }
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
     } catch (e) {}
@@ -63,7 +74,8 @@ const PREFIX = `(function () {
   var agent = {
     __pa: true,
     origin: window.__PA_ORIGIN || "",
-    match: location.hostname + location.pathname,
+    // A getter, so it follows pushState instead of remembering the first route.
+    get match() { return location.hostname + location.pathname; },
     q: q, qa: qa, click: click, punch: punch, type: type, wait: wait, pip: pip, capture: capture,
     arm: function () { pip("ok"); }
   };
@@ -88,4 +100,10 @@ const SUFFIX = `
 
 export function wrapAgent(source) {
   return PREFIX + "\n" + String(source || "").trim() + "\n" + SUFFIX;
+}
+
+// The packed copy steps aside when a live version is already in the frame, so a
+// late content script never overwrites the agent the worker just hot-swapped in.
+export function wrapPacked(source) {
+  return "if (!window.__PA_VER) " + wrapAgent(source);
 }

@@ -25,6 +25,8 @@ Edit the agent. Hit save. Open a site. Chrome fetches that script and hashes it.
 New hash: inject the new code into the page.
 Same hash: just call `arm()` again. You never reinstall. You never re-drag a bookmark.
 
+Turn on **Allow User Scripts** in the extension's Details page if Chrome shows it. That lets the worker hand code to a page whose Content Security Policy forbids `eval`. Without the toggle, sites with a strict CSP keep the packed copy and say so in the console.
+
 ```
                     you, tinkering
                           |
@@ -91,7 +93,7 @@ You cannot `npm install` it into a React app and have it click the user's tabs. 
 
 1. **The installed bit and the brain are not the same blob.** Users install eight files once. You keep shipping `agent.js`. They do not re-drag a bookmark. They do not click Reload on `chrome://extensions` after every save. That is a real developer-experience product, not a cute wrapper.
 2. **MAIN world, all frames.** Isolated-world content scripts cannot see page JS, and they lose fights with modern event systems. PageArm evals into MAIN, including `about:blank` frames that exist for one tick before a player navigates. If your agent has to `querySelector` what the user sees, this is the layer that can.
-3. **A hash, not a review queue.** `GET /agent.js` → djb hash → same hash calls `arm()`, new hash evals. An AI agent that patches a selector can save the desk and have the next navigation pick it up. No store review. No version bump theater.
+3. **A hash, not a review queue.** `GET /agent.js` → SHA-256 → same hash calls `arm()`, new hash injects. An AI agent that patches a selector can save the desk and have the next navigation pick it up. No store review. No version bump theater.
 4. **Desk-down still works.** Packed `inject.js` is the last wrap. Close the laptop. The last good agent still runs. Iterate with the desk up. Survive with it down.
 5. **A status light the human can ignore.** `agent.pip("work")` then `agent.pip("ok", "3")` paints toolbar **P**. Hover text is just `P`. Useful when a person is watching the tab, not a log file.
 
@@ -154,7 +156,9 @@ The shell is allowed to be boring. Manifest, worker, icons. You should forget it
 
 **The agent is a URL, versioned by a hash.**
 
-On each navigation the worker hits `{desk}/agent.js`. It hashes the body. If the tab already has that hash, it does not eval again. It calls `agent.arm()`. If the hash is new, it evals the new source into MAIN world and remembers the version. Save twenty times. Tabs pick it up on the next navigation, a `pushState`, or a click on **P**.
+On each navigation the worker hits `{desk}/agent.js`. It hashes the body. Frames that already have that hash get `agent.arm()`. Frames that do not get the new source injected into MAIN world, and the version is recorded only after the code ran. Save twenty times. Tabs pick it up on the next navigation, a `pushState`, or a click on **P**.
+
+The worker prefers `chrome.userScripts.execute` (Chrome 135 and newer, with **Allow User Scripts** on). That path is not subject to the page's Content Security Policy. Without it the worker falls back to `eval`, which a strict CSP refuses. When that happens the frame keeps the packed copy and the console says so. The old behavior silently claimed the new version while running the old code. It does not anymore.
 
 This is not Chrome's extension update ping. Nobody is waiting on an update server. It is just `fetch` plus a hash, which is why the desk lives on a machine you actually run. Your machine. Not a CDN that will go haywire on a Friday.
 
@@ -166,7 +170,7 @@ That is a real trade. Power in. The page can see you. If you wanted to hide, thi
 
 **A screenshot if you need one.**
 
-`await agent.capture()` asks the worker for `captureVisibleTab`. Chrome wants `<all_urls>` or a click on **P** (`activeTab`). The zip asks for both so a screenshot is not a surprise runtime error at the worst possible moment. Viewport only. Nothing below the fold. What you see is what you get.
+`await agent.capture()` asks the worker for `captureVisibleTab`. Chrome wants host permission for the tab or a click on **P** (`activeTab`). The zip carries your host list as its permissions, and the agent only runs on that list, so a screenshot works wherever the agent does. Viewport only. Nothing below the fold. What you see is what you get.
 
 `agent.punch(el)` fires pointer and mouse events, then `click()`. Use it when a page ignores a naked `.click()`. Some pages are like that. It is not personal.
 
@@ -228,10 +232,13 @@ On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.
 1. Click **Download extension**. Unzip. Keep that folder around. It is yours now.
 2. Open the extensions page for your browser (`chrome://extensions` or `edge://extensions`). Turn on **Developer mode**. **Load unpacked** on the folder that contains `manifest.json`.
 3. Pin **P**. It will sit there quietly.
+   Open the extension's Details and turn on **Allow User Scripts** if you see it. That is what lets hot-swap work on strict-CSP sites.
 4. Edit the agent on the desk. Hit **Save**. Feel free to make a mess.
 5. Wander over to a matching site, or click **P**. The worker fetches `/agent.js` and swaps if the hash moved.
 
-Leave the desk running while you tinker. Host patterns are a Chrome thing. If you add a site, download a fresh zip, unzip over the **same** folder, then Reload the extension. Hot-swap cannot invent `host_permissions`. Chrome is stubborn about that, and I am not going to fight Chrome on it.
+Leave the desk running while you tinker. Host patterns are a Chrome thing. The list you type on the desk becomes both the content script matches and the `host_permissions`, and the worker runs the live agent only on that list, never on the desk page itself. If you add a site, download a fresh zip, unzip over the **same** folder, then Reload the extension. Hot-swap cannot invent `host_permissions`. Chrome is stubborn about that, and I am not going to fight Chrome on it.
+
+The desk listens on `127.0.0.1` only, refuses saves from any other origin, and rejects a save that does not parse, with the line that broke. Nothing on your Wi-Fi and no site you visit can rewrite your agent.
 
 ---
 
@@ -240,7 +247,7 @@ Leave the desk running while you tinker. Host patterns are a Chrome thing. If yo
 Your source is wrapped so `agent` is always in scope. Write like you are in DevTools.
 
 ```js
-agent.arm()                 // called on inject and on same-hash navigations
+agent.arm()                 // called on inject and on same-hash navigations (see below)
 agent.q(sel, root?)         // querySelector, null-safe
 agent.qa(sel, root?)        // querySelectorAll as an array
 agent.click(el)
@@ -250,8 +257,10 @@ agent.wait(ms)
 agent.capture()             // Promise<dataUrl>
 agent.pip(state, mark?)     // idle | work | ok | err
 agent.origin                // desk origin
-agent.match                 // hostname + pathname
+agent.match                 // hostname + pathname, live (follows pushState)
 ```
+
+`arm()` runs when the code is injected, then again on every completed navigation and `pushState` that finds the same hash, and when you click **P**. On a fresh page load with the desk up, the packed copy arms first at document idle, then the worker swaps in the live version and arms that. Write `arm()` so it is safe to run twice. A `punch` on a Save button is not; guard it with a flag on `window`, the way `reading-ruler.js` does.
 
 ---
 
