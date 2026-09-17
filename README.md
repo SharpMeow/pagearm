@@ -2,6 +2,10 @@
 
 **Inject-and-hot-swap runtime.** Load a thin Chrome shell once. After that the agent is a URL. You arm the page.
 
+![Install and toolbar P](docs/guide.png)
+
+![How a save becomes a live tab](docs/hotswap.png)
+
 ```
  ____                     _
 |  _ \ __ _  __ _  ___   / \   _ __ _ __ ___
