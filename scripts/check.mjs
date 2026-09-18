@@ -6,7 +6,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { inflateRawSync } from "zlib";
 import { request as httpRequest } from "http";
-import { Script } from "vm";
+import { Script, createContext } from "vm";
 import { packExtension, buildManifest, TARGETS, normalizeTarget, zipName } from "./pack.mjs";
 import { wrapAgent, wrapPacked } from "./wrap.mjs";
 import { crc32 } from "./zip.mjs";
@@ -169,6 +169,53 @@ for (const n of readdirSync(join(root, "agents")).filter((f) => f.endsWith(".js"
 ok(compileError("agent.arm = () => { ok }") === null, "compileError accepts good source");
 ok(typeof compileError("agent.arm = (") === "string", "compileError rejects a syntax error");
 
+console.log("stack");
+// One desk can serve several scripts. They land in one file, so the only honest
+// test is to run that file and watch what happens, in order, with a thrower in
+// the middle.
+function runStack(parts) {
+  const log = [];
+  const win = { __PA_ORIGIN: "http://127.0.0.1:8787", __log: log, postMessage(msg) { log.push("pip:" + msg.state + (msg.mark ? ":" + msg.mark : "")); } };
+  const ctx = createContext({
+    window: win,
+    console: { warn: (...a) => log.push("warn:" + String(a[1] && a[1].message ? a[1].message : a[1])) },
+    location: { hostname: "example.com", pathname: "/" },
+    setTimeout: () => 0,
+  });
+  new Script(wrapAgent(parts), { filename: "agent.js" }).runInContext(ctx);
+  return { log, agent: win.__agent };
+}
+
+const stacked = runStack([
+  { name: "one", source: "let helper = 1; window.__log.push('body:one'); agent.arm = function () { window.__log.push('arm:one'); };" },
+  { name: "two", source: "let helper = 2; window.__log.push('body:two'); agent.arm = function () { throw new Error('two is broken'); };" },
+  { name: "three", source: "let helper = 3; window.__log.push('body:three'); agent.arm = function () { window.__log.push('arm:three'); };" },
+]);
+ok(
+  stacked.log.filter((l) => l.startsWith("body:")).join(",") === "body:one,body:two,body:three",
+  "every script in the stack runs, in the order the stack says",
+);
+ok(
+  stacked.log.filter((l) => l.startsWith("arm:")).join(",") === "arm:one,arm:three",
+  "one script throwing in arm does not take its neighbors down",
+);
+ok(stacked.log.some((l) => l.indexOf("two is broken") >= 0), "the warning carries the name of the script that threw");
+ok(
+  JSON.stringify(stacked.agent.scripts) === '["one","two","three"]',
+  "the agent says which scripts it is carrying",
+);
+// let twice in one scope is a syntax error, so the three above only parse at
+// all because each script got its own function body.
+parses(wrapAgent([{ name: "a", source: "let x = 1;" }, { name: "b", source: "let x = 2;" }]), "two scripts with the same names inside");
+
+const alone = runStack([{ name: "solo", source: "window.__log.push('body'); agent.arm = function () { window.__log.push('arm'); };" }]);
+ok(alone.log.join(",") === "body,arm", "one script alone behaves exactly as it did before there was a stack");
+ok(runStack("agent.arm = function () { window.__log.push('legacy'); };").log.join(",") === "legacy",
+  "a bare source string still wraps, which is what pack.mjs hands over");
+const quiet = runStack([{ name: "quiet", source: "var unused = 1;" }]);
+ok(quiet.log.join(",") === "pip:ok", "a script that arms nothing still pips ok, the way the default always did");
+ok(compileError([{ name: "a", source: "agent.arm = (" }]) !== null, "compileError reads a stack too");
+
 console.log("drawer");
 // A drawer name turns into a filename, so the only interesting question is
 // whether anything can climb out of the folder. Nothing may.
@@ -187,7 +234,7 @@ const desk = (path, init) => fetch(base + path, init);
 try {
   const shelf = await desk("/api/drawer");
   const body = await shelf.json();
-  ok(shelf.status === 200 && Array.isArray(body.scripts) && "live" in body, "GET /api/drawer answers with a shelf and a live pointer");
+  ok(shelf.status === 200 && Array.isArray(body.scripts) && Array.isArray(body.stack), "GET /api/drawer answers with a shelf and a stack");
   ok((await desk("/api/drawer/nope-not-here")).status === 404, "a script that is not in the drawer is a 404");
   ok((await desk("/api/drawer/..%2Fevil")).status === 400, "a name that tries to climb out is refused");
   const crossSite = await desk("/api/drawer/anything", {

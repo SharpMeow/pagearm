@@ -12,12 +12,14 @@ const port = Number(process.env.PORT || 8787);
 // in my logged-in tabs" endpoint. That is not something to hand the coffee shop.
 const host = process.env.HOST || "127.0.0.1";
 const currentPath = join(root, "agents/current.js");
-// The drawer is a shelf, not a warehouse. Many scripts sit here, exactly one is
-// live. Promoting one rewrites current.js, which changes the hash the browser
-// fetches, which is the whole hot-swap.
+// The drawer is a shelf, not a warehouse. Many scripts sit here, and the stack
+// says which ones are the agent, in order. Usually that is one name. Changing
+// the stack changes the body of /agent.js, which changes its hash, which is the
+// whole hot-swap. The browser never learns that any of this happened.
 const drawerDir = join(root, "agents/drawer");
 const livePath = join(root, "agents/current.json");
 const MAX_BODY = 1024 * 1024;
+const MAX_STACK = 16;
 
 // A drawer name becomes a filename, so it gets to be dull on purpose. No dots,
 // no slashes, nothing that could climb out of the folder. Lowercased, because a
@@ -36,22 +38,35 @@ function drawerPath(name) {
   return abs;
 }
 
-// The pointer says which drawer script current.js was copied from. It is a
-// claim about provenance, so it is dropped the moment it stops being true.
-function liveName() {
+// The stack is read back through the same door it was written: a name that is
+// no longer a file, or was never a legal name, is simply not in the stack.
+export function loadStack() {
+  let raw = [];
   try {
-    const name = drawerName(JSON.parse(readFileSync(livePath, "utf8")).name);
-    if (!name) return null;
-    const abs = drawerPath(name);
-    return abs && existsSync(abs) ? name : null;
+    const saved = JSON.parse(readFileSync(livePath, "utf8"));
+    if (Array.isArray(saved.stack)) raw = saved.stack;
+    // A desk that last ran the one-script version wrote { name }. Read it once
+    // and it becomes a stack of one the next time anything saves.
+    else if (saved.name) raw = [saved.name];
   } catch (e) {
-    return null;
+    raw = [];
   }
+  const seen = new Set();
+  const out = [];
+  for (const item of raw.slice(0, MAX_STACK)) {
+    const name = drawerName(item);
+    if (!name || seen.has(name)) continue;
+    const abs = drawerPath(name);
+    if (!abs || !existsSync(abs)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
 }
 
-function setLiveName(name) {
+function setStack(names) {
   mkdirSync(join(root, "agents"), { recursive: true });
-  writeFileSync(livePath, JSON.stringify({ name: name || null }) + "\n", "utf8");
+  writeFileSync(livePath, JSON.stringify({ stack: names || [] }) + "\n", "utf8");
 }
 
 export function drawerList() {
@@ -68,18 +83,6 @@ export function drawerList() {
     });
 }
 
-// Writing the agent and writing the drawer are one act when the editor is bound
-// to a drawer script, so the two never drift apart behind your back.
-function writeAgent(source, name) {
-  mkdirSync(join(root, "agents"), { recursive: true });
-  writeFileSync(currentPath, source, "utf8");
-  if (name) {
-    mkdirSync(drawerDir, { recursive: true });
-    writeFileSync(drawerPath(name), source, "utf8");
-  }
-  setLiveName(name || null);
-}
-
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -92,6 +95,24 @@ const TYPES = {
 function loadAgent() {
   if (existsSync(currentPath)) return readFileSync(currentPath, "utf8");
   return readFileSync(join(root, "agents/hello.js"), "utf8");
+}
+
+// What the desk is serving, in order. A stack with names in it reads the drawer
+// files themselves, so saving one of them is already the live change and there
+// is no second copy to keep in step. An empty stack means the scratch pad in
+// the textarea, which is where a desk with no drawer yet lives.
+export function liveSources() {
+  const stack = loadStack();
+  if (!stack.length) return [{ name: "agent", source: loadAgent() }];
+  return stack.map((name) => ({ name, source: readFileSync(drawerPath(name), "utf8") }));
+}
+
+// The editor holds one script. Open the top of the stack if there is one, the
+// scratch pad if there is not.
+function editorSource() {
+  const stack = loadStack();
+  if (!stack.length) return { source: loadAgent(), bound: null };
+  return { source: readFileSync(drawerPath(stack[0]), "utf8"), bound: stack[0] };
 }
 
 function originFrom(req) {
@@ -164,12 +185,13 @@ export const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", originFrom(req));
 
   if (url.pathname === "/agent.js") {
-    send(res, 200, wrapAgent(loadAgent()), "text/javascript; charset=utf-8");
+    send(res, 200, wrapAgent(liveSources()), "text/javascript; charset=utf-8");
     return;
   }
 
   if (url.pathname === "/api/agent" && req.method === "GET") {
-    send(res, 200, JSON.stringify({ source: loadAgent(), live: liveName() }), "application/json; charset=utf-8");
+    const open = editorSource();
+    send(res, 200, JSON.stringify({ source: open.source, bound: open.bound, stack: loadStack() }), "application/json; charset=utf-8");
     return;
   }
 
@@ -191,15 +213,65 @@ export const server = createServer(async (req, res) => {
       send(res, 400, JSON.stringify({ ok: false, error: err }), "application/json; charset=utf-8");
       return;
     }
-    // An editor bound to a drawer script says so, and the save lands in both
-    // places. An unbound editor is a scratch pad and clears the pointer.
+    // An editor bound to a drawer script writes that file, and a script already
+    // in the stack stays where it is instead of kicking its neighbors out. An
+    // unbound editor is a scratch pad, and saving it is the whole agent.
     const bound = body.name === undefined || body.name === null || body.name === "" ? null : drawerName(body.name);
     if (body.name && !bound) {
       send(res, 400, JSON.stringify({ ok: false, error: "bad drawer name" }), "application/json; charset=utf-8");
       return;
     }
-    writeAgent(source, bound);
-    send(res, 200, JSON.stringify({ ok: true, live: bound }), "application/json; charset=utf-8");
+    if (!bound) {
+      mkdirSync(join(root, "agents"), { recursive: true });
+      writeFileSync(currentPath, source, "utf8");
+      setStack([]);
+      send(res, 200, JSON.stringify({ ok: true, bound: null, stack: [] }), "application/json; charset=utf-8");
+      return;
+    }
+    mkdirSync(drawerDir, { recursive: true });
+    writeFileSync(drawerPath(bound), source, "utf8");
+    if (!loadStack().includes(bound)) setStack([bound]);
+    send(res, 200, JSON.stringify({ ok: true, bound, stack: loadStack() }), "application/json; charset=utf-8");
+    return;
+  }
+
+  // The stack: which drawer scripts are the agent, in the order they run.
+  if (url.pathname === "/api/stack" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may save");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const asked = Array.isArray(body.names) ? body.names : [];
+    if (asked.length > MAX_STACK) {
+      send(res, 400, JSON.stringify({ ok: false, error: "that is more scripts than one agent should carry" }), "application/json; charset=utf-8");
+      return;
+    }
+    const names = [];
+    for (const item of asked) {
+      const name = drawerName(item);
+      const abs = name && drawerPath(name);
+      if (!abs || !existsSync(abs)) {
+        send(res, 400, JSON.stringify({ ok: false, error: "not in the drawer: " + String(item) }), "application/json; charset=utf-8");
+        return;
+      }
+      if (!names.includes(name)) names.push(name);
+    }
+    // Compile the whole stack, not each script alone. They end up in one file,
+    // so this is the only check that matches what the browser will parse.
+    const err = compileError(names.map((name) => ({ name, source: readFileSync(drawerPath(name), "utf8") })));
+    if (err) {
+      send(res, 400, JSON.stringify({ ok: false, error: err }), "application/json; charset=utf-8");
+      return;
+    }
+    setStack(names);
+    send(res, 200, JSON.stringify({ ok: true, stack: loadStack(), scripts: drawerList() }), "application/json; charset=utf-8");
     return;
   }
 
@@ -220,7 +292,7 @@ export const server = createServer(async (req, res) => {
         send(res, 405, "not that way");
         return;
       }
-      send(res, 200, JSON.stringify({ live: liveName(), scripts: drawerList() }), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({ stack: loadStack(), scripts: drawerList() }), "application/json; charset=utf-8");
       return;
     }
 
@@ -246,10 +318,12 @@ export const server = createServer(async (req, res) => {
         return;
       }
       rmSync(abs);
-      // The live agent keeps running. Only the claim that it came from this
-      // drawer script goes away, because that script no longer exists.
-      if (liveName() === name) setLiveName(null);
-      send(res, 200, JSON.stringify({ ok: true, live: liveName(), scripts: drawerList() }), "application/json; charset=utf-8");
+      // A script that was in the stack drops out of it, because the drawer file
+      // is what the desk serves now. Tabs keep the copy they already have until
+      // the next navigation, which is the same promise as any other save.
+      const left = loadStack().filter((n) => n !== name);
+      setStack(left);
+      send(res, 200, JSON.stringify({ ok: true, stack: loadStack(), scripts: drawerList() }), "application/json; charset=utf-8");
       return;
     }
 
@@ -271,8 +345,10 @@ export const server = createServer(async (req, res) => {
         send(res, 400, JSON.stringify({ ok: false, error: err }), "application/json; charset=utf-8");
         return;
       }
-      writeAgent(source, name);
-      send(res, 200, JSON.stringify({ ok: true, name, source, live: name }), "application/json; charset=utf-8");
+      // "Make it the agent" means this one and nothing else. Adding a script to
+      // a stack without evicting the others goes through /api/stack.
+      setStack([name]);
+      send(res, 200, JSON.stringify({ ok: true, name, source, stack: loadStack() }), "application/json; charset=utf-8");
       return;
     }
 
@@ -291,11 +367,10 @@ export const server = createServer(async (req, res) => {
     }
     mkdirSync(drawerDir, { recursive: true });
     writeFileSync(abs, source, "utf8");
-    // Saving over the script that is live keeps the live agent honest: the
-    // pointer means current.js is a copy of this file, so make that true.
-    const wasLive = liveName() === name;
-    if (wasLive) writeAgent(source, name);
-    send(res, 200, JSON.stringify({ ok: true, name, live: liveName(), armed: wasLive, scripts: drawerList() }), "application/json; charset=utf-8");
+    // A script in the stack is served from this very file, so saving it is
+    // already the live change. Nothing to copy, nothing to fall out of step.
+    const armed = loadStack().includes(name);
+    send(res, 200, JSON.stringify({ ok: true, name, stack: loadStack(), armed, scripts: drawerList() }), "application/json; charset=utf-8");
     return;
   }
 
@@ -318,7 +393,7 @@ export const server = createServer(async (req, res) => {
     const zip = packExtension({
       origin: originFrom(req),
       hosts,
-      agentSource: loadAgent(),
+      agentSource: liveSources(),
       target,
     });
     res.writeHead(200, {
