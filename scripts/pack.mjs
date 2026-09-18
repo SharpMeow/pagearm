@@ -6,6 +6,16 @@ import { wrapPacked } from "./wrap.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+// The manifest version is package.json's version. Written twice, the two drift,
+// and the one people see is the one nobody edits.
+export const VERSION = (function () {
+  try {
+    return String(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version || "0.0.0");
+  } catch (e) {
+    return "0.0.0";
+  }
+})();
+
 export const DEFAULT_HOSTS = ["https://*/*", "http://127.0.0.1/*", "http://localhost/*"];
 
 // One shell, three houses. The code is the same in all three. The manifest is
@@ -46,7 +56,7 @@ export function buildManifest({ origin, hosts, target }) {
   const manifest = {
     manifest_version: 3,
     name: "P",
-    version: "0.2.0",
+    version: VERSION,
     description: "PageArm runtime. Load unpacked only.",
     action: {
       default_title: "P",

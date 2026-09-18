@@ -4,6 +4,7 @@ import { dirname, join, extname, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { Script } from "vm";
 import { packExtension, normalizeTarget, zipName } from "./pack.mjs";
+import { pngGlyph } from "./zip.mjs";
 import { wrapAgent } from "./wrap.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,7 +18,9 @@ const currentPath = join(root, "agents/current.js");
 // the stack changes the body of /agent.js, which changes its hash, which is the
 // whole hot-swap. The browser never learns that any of this happened.
 const drawerDir = join(root, "agents/drawer");
-const livePath = join(root, "agents/current.json");
+const stackPath = join(root, "agents/stack.json");
+// What the file was called when it held one name. Read once, then forgotten.
+const oldStackPath = join(root, "agents/current.json");
 const MAX_BODY = 1024 * 1024;
 const MAX_STACK = 16;
 
@@ -43,10 +46,10 @@ function drawerPath(name) {
 export function loadStack() {
   let raw = [];
   try {
-    const saved = JSON.parse(readFileSync(livePath, "utf8"));
+    const saved = JSON.parse(readFileSync(existsSync(stackPath) ? stackPath : oldStackPath, "utf8"));
     if (Array.isArray(saved.stack)) raw = saved.stack;
-    // A desk that last ran the one-script version wrote { name }. Read it once
-    // and it becomes a stack of one the next time anything saves.
+    // A desk that last ran the one-script version wrote { name } into
+    // current.json. Read it once and the next save writes stack.json instead.
     else if (saved.name) raw = [saved.name];
   } catch (e) {
     raw = [];
@@ -66,7 +69,11 @@ export function loadStack() {
 
 function setStack(names) {
   mkdirSync(join(root, "agents"), { recursive: true });
-  writeFileSync(livePath, JSON.stringify({ stack: names || [] }) + "\n", "utf8");
+  writeFileSync(stackPath, JSON.stringify({ stack: names || [] }) + "\n", "utf8");
+  // Tidy up after the desk that used the old name, so the two cannot disagree.
+  try {
+    if (existsSync(oldStackPath)) rmSync(oldStackPath);
+  } catch (e) {}
 }
 
 export function drawerList() {
@@ -93,8 +100,27 @@ const TYPES = {
 };
 
 function loadAgent() {
-  if (existsSync(currentPath)) return readFileSync(currentPath, "utf8");
-  return readFileSync(join(root, "agents/hello.js"), "utf8");
+  try {
+    if (existsSync(currentPath)) return readFileSync(currentPath, "utf8");
+  } catch (e) {}
+  try {
+    return readFileSync(join(root, "agents/hello.js"), "utf8");
+  } catch (e) {
+    // Even with nothing to read, the desk answers. An agent with no scripts
+    // arms, pips, and waits for you.
+    return "";
+  }
+}
+
+// A drawer file can go away between the moment the stack is read and the moment
+// it is served. You delete them from a shell; that is allowed.
+function readScript(name) {
+  try {
+    return readFileSync(drawerPath(name), "utf8");
+  } catch (e) {
+    console.warn("[desk] leaving " + name + " out: " + (e && e.message ? e.message : e));
+    return null;
+  }
 }
 
 // What the desk is serving, in order. A stack with names in it reads the drawer
@@ -102,17 +128,24 @@ function loadAgent() {
 // is no second copy to keep in step. An empty stack means the scratch pad in
 // the textarea, which is where a desk with no drawer yet lives.
 export function liveSources() {
-  const stack = loadStack();
-  if (!stack.length) return [{ name: "agent", source: loadAgent() }];
-  return stack.map((name) => ({ name, source: readFileSync(drawerPath(name), "utf8") }));
+  const out = [];
+  for (const name of loadStack()) {
+    const source = readScript(name);
+    if (source !== null) out.push({ name, source });
+  }
+  if (!out.length) return [{ name: "agent", source: loadAgent() }];
+  return out;
 }
 
 // The editor holds one script. Open the top of the stack if there is one, the
 // scratch pad if there is not.
 function editorSource() {
   const stack = loadStack();
-  if (!stack.length) return { source: loadAgent(), bound: null };
-  return { source: readFileSync(drawerPath(stack[0]), "utf8"), bound: stack[0] };
+  if (stack.length) {
+    const source = readScript(stack[0]);
+    if (source !== null) return { source, bound: stack[0] };
+  }
+  return { source: loadAgent(), bound: null };
 }
 
 function originFrom(req) {
@@ -144,6 +177,15 @@ function loopbackHost(req) {
   return name === "127.0.0.1" || name === "localhost" || name === "::1";
 }
 
+// The last few throws the agent hit out in the world. In memory on purpose:
+// this is a workshop light, not a log file, and it should not outlive the desk.
+const MAX_OOPS = 10;
+let oopsLog = [];
+
+function clamp(value, max) {
+  return String(value === undefined || value === null ? "" : value).slice(0, max);
+}
+
 // The desk page is the only thing that writes. A cross-site page cannot, even
 // though it can reach 127.0.0.1 from the same browser.
 function sameSite(req) {
@@ -154,6 +196,41 @@ function sameSite(req) {
   return true;
 }
 
+// The shell writes here too, and it is not same-origin with the desk. Its
+// Origin is an extension scheme, which a web page cannot forge, so a site you
+// visit still cannot fill this with noise.
+function fromShell(req) {
+  if (/^(chrome|moz|safari-web)-extension:\/\//.test(String(req.headers.origin || ""))) return true;
+  return sameSite(req);
+}
+
+// Where the human's first line lands inside the wrapper. Measured from the
+// wrapper itself, so it stays right when wrap.mjs grows a line.
+const BODY_OFFSET = (function () {
+  const mark = "__pa_where_does_this_land__";
+  const at = wrapAgent(mark).split("\n").findIndex((l) => l.indexOf(mark) >= 0);
+  return at < 0 ? 0 : at;
+})();
+
+// wrapAgent trims, so blank lines above the code would otherwise shift the count.
+function leadingLines(source) {
+  const text = String(source);
+  const head = text.slice(0, text.length - text.trimStart().length);
+  return (head.match(/\n/g) || []).length;
+}
+
+function brokenLine(err, source) {
+  const m = /agent\.js:(\d+)/.exec(String((err && err.stack) || ""));
+  if (!m) return 0;
+  const line = Number(m[1]) - BODY_OFFSET + leadingLines(source);
+  if (line < 1) return 0;
+  // An unterminated bracket is reported at end of input, which is the wrapper's
+  // line, not yours. Point at your last line instead: it is the one to look at,
+  // and it is one the editor can actually put a cursor on.
+  const last = String(source).split("\n").length;
+  return line > last ? last : line;
+}
+
 // Compile the wrapped agent before saving it. A syntax error caught here is a
 // 400 with a line number, not a silent fallback to the packed copy in every tab.
 export function compileError(source) {
@@ -161,7 +238,11 @@ export function compileError(source) {
     new Script(wrapAgent(source), { filename: "agent.js" });
     return null;
   } catch (e) {
-    return String(e && e.message ? e.message : e);
+    const msg = String(e && e.message ? e.message : e);
+    // Only one script can be pointed at a line in the editor. A stack is many
+    // files in one, and a guess there would be worse than no number at all.
+    const line = typeof source === "string" ? brokenLine(e, source) : 0;
+    return line ? msg + " (line " + line + ")" : msg;
   }
 }
 
@@ -176,13 +257,18 @@ async function readBody(req) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// Exported so check.mjs can drive the routes without a shell and a port guess.
-export const server = createServer(async (req, res) => {
+async function handle(req, res) {
   if (!loopbackHost(req)) {
     send(res, 403, "desk answers to 127.0.0.1 only");
     return;
   }
   const url = new URL(req.url || "/", originFrom(req));
+
+  if (url.pathname === "/favicon.png" || url.pathname === "/favicon.ico") {
+    // Same glyph the toolbar wears, painted by the same three lines of PNG.
+    send(res, 200, Buffer.from(pngGlyph(32, [184, 255, 60], "P")), "image/png");
+    return;
+  }
 
   if (url.pathname === "/agent.js") {
     send(res, 200, wrapAgent(liveSources()), "text/javascript; charset=utf-8");
@@ -374,6 +460,46 @@ export const server = createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/oops") {
+    if (req.method === "GET") {
+      send(res, 200, JSON.stringify({ errors: oopsLog }), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method === "DELETE") {
+      if (!sameSite(req)) {
+        send(res, 403, "only the desk may clear that");
+        return;
+      }
+      oopsLog = [];
+      send(res, 200, JSON.stringify({ ok: true, errors: oopsLog }), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, "not that way");
+      return;
+    }
+    if (!fromShell(req)) {
+      send(res, 403, "only the shell may report that");
+      return;
+    }
+    let told = {};
+    try {
+      told = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    oopsLog.unshift({
+      script: clamp(told.script, 80),
+      message: clamp(told.message, 300),
+      where: clamp(told.where, 200),
+      at: Date.now(),
+    });
+    oopsLog = oopsLog.slice(0, MAX_OOPS);
+    send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+    return;
+  }
+
   if (url.pathname === "/api/examples") {
     const names = ["hello.js", "highlight-headings.js", "outline-forms.js", "reading-ruler.js"];
     const examples = names.map((name) => ({
@@ -416,11 +542,45 @@ export const server = createServer(async (req, res) => {
     return;
   }
   send(res, 200, readFileSync(abs), TYPES[extname(abs)] || "application/octet-stream");
+}
+
+// The desk is a thing you leave running for days while you work in another
+// window. It does not get to die over one request. A bare "//" alone used to
+// take the whole process down inside new URL(), which any page in the browser
+// could ask for, and a drawer file deleted at the wrong moment did the same.
+// Answer 500, say what happened in the terminal, keep serving.
+function fumble(res, e) {
+  const why = e && e.message ? e.message : String(e);
+  console.warn("[desk] that request went wrong: " + why);
+  try {
+    if (!res.headersSent) send(res, 500, "the desk tripped over that one: " + why);
+    else res.end();
+  } catch (e2) {}
+}
+
+// Exported so check.mjs can drive the routes without a shell and a port guess.
+export const server = createServer(function (req, res) {
+  // handle is async, so a throw anywhere inside it lands here as a rejection.
+  try {
+    handle(req, res).catch(function (e) { fumble(res, e); });
+  } catch (e) {
+    fumble(res, e);
+  }
 });
 
 // Only listen when run directly. check.mjs imports this file for compileError.
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
+  // Last resort. The per-request guard above catches the ones we can answer;
+  // these two keep a stray timer or a socket error from ending the session.
+  // Only when run as the desk: a check that imports this file should still see
+  // its own mistakes.
+  process.on("unhandledRejection", (e) => {
+    console.warn("[desk] stray rejection: " + (e && e.message ? e.message : e));
+  });
+  process.on("uncaughtException", (e) => {
+    console.warn("[desk] caught: " + (e && e.stack ? e.stack : e));
+  });
   server.listen(port, host, () => {
     console.log(`PageArm desk http://${host}:${port}`);
   });

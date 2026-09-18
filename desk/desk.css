@@ -94,6 +94,44 @@ label { display: block; margin-top: 8px; }
   background: var(--accent);
   border-color: var(--accent);
 }
+/* The one red thing on the desk. It only exists when something threw. */
+.oops {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(226, 75, 75, 0.4);
+  border-left: 3px solid #e24b4b;
+  border-radius: 8px;
+  background: rgba(226, 75, 75, 0.06);
+  font-size: 13px;
+  color: var(--ink);
+}
+/* display: flex beats the hidden attribute, so say it out loud. Without this
+   the desk wears an empty red bar from the moment it loads. */
+.oops[hidden] { display: none; }
+.oops .who { flex: 0 0 auto; color: #e24b4b; font-weight: 600; }
+.oops .said {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.oops .when { margin-left: auto; color: var(--muted); white-space: nowrap; }
+.oops button {
+  height: 22px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+}
+.oops button:hover { color: var(--ink); border-color: var(--muted); }
+
 .drawer { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
 .drawer h2 { margin-bottom: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

@@ -78,6 +78,22 @@ const PREFIX = `(function () {
     });
   }
   function idle() { pip("ok"); }
+  // A throw out in the world used to live and die in that page's console, which
+  // is not where you are looking. Paint P red, say it there, and send it to the
+  // desk with the name of the script that did it.
+  function oops(name, err) {
+    pip("err");
+    console.warn("[pagearm] " + name, err);
+    try {
+      window.postMessage({
+        source: "pa",
+        type: "oops",
+        script: String(name || ""),
+        message: String((err && err.message) || err || "").slice(0, 300),
+        where: String(location.href).slice(0, 200)
+      }, "*");
+    } catch (e) {}
+  }
   var agent = {
     __pa: true,
     origin: window.__PA_ORIGIN || "",
@@ -99,8 +115,7 @@ const PREFIX = `(function () {
     try {
       body();
     } catch (err) {
-      pip("err");
-      console.warn("[pagearm] " + name, err);
+      oops(name, err);
     }
     if (agent.arm !== idle && typeof agent.arm === "function") arms.push([name, agent.arm]);
     agent.arm = idle;
@@ -116,8 +131,7 @@ const PREFIX = `(function () {
       try {
         arms[i][1]();
       } catch (err) {
-        pip("err");
-        console.warn("[pagearm] " + arms[i][0], err);
+        oops(arms[i][0], err);
       }
     }
   }

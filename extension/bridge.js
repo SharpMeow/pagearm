@@ -38,6 +38,9 @@ window.addEventListener("message", function (ev) {
   if (d.type === "pip") {
     send({ type: "pip", state: d.state || "idle", show: d.show !== false, mark: d.mark || "" });
   }
+  if (d.type === "oops") {
+    send({ type: "oops", script: d.script || "", message: d.message || "", where: d.where || "" });
+  }
   if (d.type === "capture") {
     send({ type: "capture" }, function (res) {
       try {

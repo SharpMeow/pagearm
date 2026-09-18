@@ -250,7 +250,9 @@ On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.
 
 Leave the desk running while you tinker. Host patterns belong to the browser, not the desk. The list you type on the desk becomes both the content script matches and the `host_permissions`, and the background runs the live agent only on that list, never on the desk page itself. If you add a site, download a fresh zip, unzip over the **same** folder, then reload the extension. Hot-swap cannot invent `host_permissions`. Every browser is stubborn about that, and I am not going to fight all three.
 
-The desk listens on `127.0.0.1` only, refuses saves from any other origin, and rejects a save that does not parse, with the line that broke. Nothing on your Wi-Fi and no site you visit can rewrite your agent.
+The desk listens on `127.0.0.1` only, refuses saves from any other origin, and rejects a save that does not parse, with the line that broke, counted in the editor's own numbering and selected for you. Nothing on your Wi-Fi and no site you visit can rewrite your agent. One request cannot take the desk down either: anything it cannot answer is a 500 and a line in the terminal, and a drawer file it cannot read is left out of the stack rather than thrown.
+
+In the editor, **Tab** indents by two spaces instead of moving the focus. Press **Escape** first if you want Tab to leave.
 
 ---
 
@@ -283,9 +285,14 @@ Saving, deleting, and the drawer itself:
 
 A drawer name is letters, digits, dash, and underscore, lowercased. It becomes a filename, so it is dull on purpose, and a name that tries to climb out of the folder is a 400. A stack is capped at sixteen scripts, which is more than anyone should want.
 
-`agents/drawer/` and `agents/current.json`, which holds the stack, are gitignored. The drawer is yours, not the repo's. Copy a script into `agents/` if you want it in version control.
+`agents/drawer/` and `agents/stack.json`, which holds the stack, are gitignored. The drawer is yours, not the repo's. Copy a script into `agents/` if you want it in version control.
+
+**When a script throws out in the world**, it used to say so in that page's console, which is not where you are looking. Now **P** goes red and the desk names it: which script, what it said, and which page it was on. The shell posts it to the desk, the desk keeps the last ten in memory and never writes them down, and only the desk page and the extension may write there. Same complaint twice inside five seconds travels once, so an agent throwing on every navigation does not become a firehose.
 
 ```
+GET    /api/oops                the last few throws, newest first
+POST   /api/oops                the shell reporting one
+DELETE /api/oops                clear them
 GET    /api/drawer              the shelf plus the stack
 GET    /api/drawer/:name        one script
 POST   /api/drawer/:name        save it, syntax-checked first
@@ -330,7 +337,7 @@ AS_TARGET=firefox npm run pack    # just one
 
 Writes `dist/pagearm-chromium.zip`, `dist/pagearm-firefox.zip`, and `dist/pagearm-safari.zip`. Same bytes the desk download button serves. No surprises.
 
-`npm run check` packs all three in memory, reads each zip back, and validates every manifest and script, including the four keys the browsers disagree about. Mozilla's own `web-ext lint` passes on the Firefox build with one warning, `DANGEROUS_EVAL`, which is the CSP fallback doing exactly what the README says it does.
+`npm run check`, or `npm test`, packs all three in memory, reads each zip back, and validates every manifest and script, including the four keys the browsers disagree about. Mozilla's own `web-ext lint` passes on the Firefox build with one warning, `DANGEROUS_EVAL`, which is the CSP fallback doing exactly what the README says it does.
 
 ---
 

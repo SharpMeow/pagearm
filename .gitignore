@@ -4,6 +4,7 @@ dist/
 *.log
 agents/current.js
 agents/current.json
+agents/stack.json
 agents/drawer/
 .idea/
 .vscode/

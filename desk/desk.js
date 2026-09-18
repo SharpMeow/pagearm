@@ -15,6 +15,7 @@ const drawerLiveBtn = document.getElementById("drawer-live");
 const drawerDeleteBtn = document.getElementById("drawer-delete");
 const stackListEl = document.getElementById("stack-list");
 const drawerCountEl = document.getElementById("drawer-count");
+const oopsEl = document.getElementById("oops");
 
 // Two different things. `bound` is the drawer script the editor is holding.
 // `stack` is the ordered list the browser is actually running, which is usually
@@ -311,6 +312,7 @@ async function putInDrawer(makeLive) {
     try { data = await r.json(); } catch (e) {}
     if (!r.ok) {
       drawerState.textContent = "not saved: " + (data.error || r.status);
+      showBroken(data.error);
       return;
     }
     bound = name;
@@ -401,6 +403,7 @@ async function save() {
     try { data = await r.json(); } catch (e) {}
     if (!r.ok) {
       saveState.textContent = "not saved: " + (data.error || r.status);
+      showBroken(data.error);
       return;
     }
     stack = data.stack || [];
@@ -412,6 +415,108 @@ async function save() {
     saveState.textContent = "not saved: desk unreachable";
   }
 }
+
+function ago(at) {
+  const secs = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (secs < 60) return secs + "s ago";
+  if (secs < 3600) return Math.round(secs / 60) + "m ago";
+  return Math.round(secs / 3600) + "h ago";
+}
+
+function host(where) {
+  try {
+    return new URL(where).host;
+  } catch (e) {
+    return where || "somewhere";
+  }
+}
+
+// A script that throws out on a real page used to say so in that page's
+// console, which is not where you are. Now it says so here.
+function showOops(entry) {
+  if (!entry) {
+    oopsEl.hidden = true;
+    oopsEl.textContent = "";
+    return;
+  }
+  oopsEl.hidden = false;
+  oopsEl.innerHTML = "";
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = pretty(entry.script || "the agent") + " threw on " + host(entry.where);
+  const said = document.createElement("span");
+  said.className = "said";
+  said.textContent = entry.message || "";
+  const when = document.createElement("span");
+  when.className = "when";
+  when.textContent = ago(entry.at || Date.now());
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "clear";
+  clear.addEventListener("click", async () => {
+    showOops(null);
+    try { await fetch("/api/oops", { method: "DELETE" }); } catch (e) {}
+  });
+  oopsEl.append(who, said, when, clear);
+}
+
+async function pollOops() {
+  // Nothing to watch while the desk is in a background tab.
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await fetch("/api/oops");
+    const data = await r.json();
+    showOops((data.errors || [])[0] || null);
+  } catch (e) {}
+}
+
+// A syntax error comes back with the line it broke on. Put the cursor there,
+// because hunting for line 34 by eye is the least pleasant part of a typo.
+function showBroken(message) {
+  const m = /\(line (\d+)\)/.exec(String(message || ""));
+  if (!m) return;
+  const line = Number(m[1]);
+  const lines = source.value.split("\n");
+  if (line < 1 || line > lines.length) return;
+  let at = 0;
+  for (let i = 0; i < line - 1; i++) at += lines[i].length + 1;
+  source.focus();
+  source.setSelectionRange(at, at + lines[line - 1].length);
+  try {
+    // Selecting does not always scroll, so put the line near the middle.
+    const step = parseFloat(getComputedStyle(source).lineHeight) || 20;
+    source.scrollTop = Math.max(0, (line - 1) * step - source.clientHeight / 2);
+  } catch (e) {}
+}
+
+// Tab belongs to the code, not to the focus ring. Escape first, then Tab, to
+// leave the editor with the keyboard.
+let tabLeaves = false;
+source.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    tabLeaves = true;
+    return;
+  }
+  if (ev.key !== "Tab") {
+    tabLeaves = false;
+    return;
+  }
+  if (tabLeaves || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey) {
+    tabLeaves = false;
+    return;
+  }
+  ev.preventDefault();
+  const pad = "  ";
+  let typed = false;
+  // execCommand is the deprecated one that keeps undo working, so try it first.
+  try { typed = document.execCommand("insertText", false, pad); } catch (e) {}
+  if (!typed) {
+    const at = source.selectionStart;
+    const end = source.selectionEnd;
+    source.value = source.value.slice(0, at) + pad + source.value.slice(end);
+    source.selectionStart = source.selectionEnd = at + pad.length;
+  }
+});
 
 saveBtn.addEventListener("click", save);
 drawerSaveBtn.addEventListener("click", () => putInDrawer(false));
@@ -441,3 +546,7 @@ load()
     drawerState.textContent = "could not read the drawer";
   });
 loadExamples().catch(() => {});
+
+pollOops();
+setInterval(pollOops, 4000);
+document.addEventListener("visibilitychange", pollOops);
