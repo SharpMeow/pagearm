@@ -7,6 +7,17 @@ const examplesEl = document.getElementById("examples");
 const browsersEl = document.getElementById("browsers");
 const stepsEl = document.getElementById("steps");
 const noteEl = document.getElementById("browser-note");
+const drawerListEl = document.getElementById("drawer-list");
+const drawerNameEl = document.getElementById("drawer-name");
+const drawerState = document.getElementById("drawer-state");
+const drawerSaveBtn = document.getElementById("drawer-save");
+const drawerLiveBtn = document.getElementById("drawer-live");
+const drawerDeleteBtn = document.getElementById("drawer-delete");
+
+// Two names, and they are not the same thing. `bound` is the drawer script the
+// editor is holding. `live` is the one the browser is actually running.
+let bound = null;
+let live = null;
 
 // Same shell everywhere. The manifest and the install ritual differ, so the
 // desk hands over the zip for the browser you say you are using.
@@ -100,6 +111,138 @@ async function load() {
   const r = await fetch("/api/agent");
   const data = await r.json();
   source.value = data.source || "";
+  live = data.live || null;
+  bound = live;
+  if (live) drawerNameEl.value = live;
+}
+
+function askedName() {
+  return (drawerNameEl.value || bound || "").trim().toLowerCase();
+}
+
+function renderDrawer(scripts) {
+  drawerListEl.innerHTML = "";
+  if (!scripts.length) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "empty";
+    drawerListEl.appendChild(empty);
+    return;
+  }
+  scripts.forEach((s) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.name = s.name;
+    b.textContent = s.name.replace(/-/g, " ");
+    b.setAttribute("aria-pressed", s.name === bound ? "true" : "false");
+    if (s.name === live) {
+      b.classList.add("live");
+      b.title = "this one is the agent";
+    }
+    b.addEventListener("click", () => openFromDrawer(s.name));
+    drawerListEl.appendChild(b);
+  });
+}
+
+async function loadDrawer() {
+  const r = await fetch("/api/drawer");
+  const data = await r.json();
+  live = data.live || null;
+  renderDrawer(data.scripts || []);
+}
+
+async function openFromDrawer(name) {
+  const r = await fetch("/api/drawer/" + encodeURIComponent(name));
+  const data = await r.json();
+  if (!r.ok) {
+    drawerState.textContent = "could not open " + name + ": " + (data.error || r.status);
+    return;
+  }
+  source.value = data.source || "";
+  bound = name;
+  drawerNameEl.value = name;
+  drawerState.textContent = name === live
+    ? name + " is open, and it is the agent."
+    : name + " is open. Make it the agent to hot-swap it in.";
+  saveState.textContent = "";
+  await loadDrawer().catch(() => {});
+}
+
+// Save the editor under a drawer name, then optionally make that one the agent.
+// Doing both in that order means the thing that goes live is what you are
+// looking at, not whatever the file held before you started typing.
+async function putInDrawer(makeLive) {
+  const name = askedName();
+  if (!name) {
+    drawerState.textContent = "give it a name first: letters, digits, dash, underscore.";
+    drawerNameEl.focus();
+    return;
+  }
+  drawerState.textContent = makeLive ? "arming…" : "saving…";
+  try {
+    const r = await fetch("/api/drawer/" + encodeURIComponent(name), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: source.value }),
+    });
+    let data = {};
+    try { data = await r.json(); } catch (e) {}
+    if (!r.ok) {
+      drawerState.textContent = "not saved: " + (data.error || r.status);
+      return;
+    }
+    bound = name;
+    drawerNameEl.value = name;
+    live = data.live || null;
+    if (!makeLive) {
+      drawerState.textContent = data.armed
+        ? "saved to " + name + ", which is the agent. Open or reload a tab."
+        : "saved to " + name + ". Not the agent yet.";
+      renderDrawer(data.scripts || []);
+      return;
+    }
+    const p = await fetch("/api/drawer/" + encodeURIComponent(name) + "/live", { method: "POST" });
+    let out = {};
+    try { out = await p.json(); } catch (e) {}
+    if (!p.ok) {
+      drawerState.textContent = "saved, but not armed: " + (out.error || p.status);
+      await loadDrawer().catch(() => {});
+      return;
+    }
+    live = out.live || name;
+    drawerState.textContent = name + " is the agent now. Open or reload a tab.";
+    saveState.textContent = "";
+    await loadDrawer().catch(() => {});
+  } catch (e) {
+    drawerState.textContent = "desk unreachable";
+  }
+}
+
+async function removeFromDrawer() {
+  const name = askedName();
+  if (!name) {
+    drawerState.textContent = "name the one to throw out.";
+    return;
+  }
+  if (!confirm("Delete " + name + " from the drawer?")) return;
+  try {
+    const r = await fetch("/api/drawer/" + encodeURIComponent(name), { method: "DELETE" });
+    let data = {};
+    try { data = await r.json(); } catch (e) {}
+    if (!r.ok) {
+      drawerState.textContent = "not deleted: " + (data.error || r.status);
+      return;
+    }
+    if (bound === name) bound = null;
+    live = data.live || null;
+    drawerNameEl.value = "";
+    renderDrawer(data.scripts || []);
+    drawerState.textContent = name === live
+      ? name + " is gone."
+      : name + " is gone. Whatever was armed keeps running until you save another one.";
+  } catch (e) {
+    drawerState.textContent = "desk unreachable";
+  }
 }
 
 async function loadExamples() {
@@ -112,6 +255,12 @@ async function loadExamples() {
     b.textContent = ex.id.replace(/-/g, " ");
     b.addEventListener("click", () => {
       source.value = ex.source;
+      // An example is a fresh sheet of paper, not the drawer script you had open.
+      bound = null;
+      drawerNameEl.value = ex.id;
+      drawerState.textContent = "example loaded. Save it to the drawer to keep it.";
+      renderDrawer([]);
+      loadDrawer().catch(() => {});
       saveState.textContent = "unsaved example";
     });
     examplesEl.appendChild(b);
@@ -124,7 +273,7 @@ async function save() {
     const r = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: source.value }),
+      body: JSON.stringify({ source: source.value, name: bound }),
     });
     let data = {};
     try { data = await r.json(); } catch (e) {}
@@ -132,13 +281,26 @@ async function save() {
       saveState.textContent = "not saved: " + (data.error || r.status);
       return;
     }
-    saveState.textContent = "saved. open or reload a tab.";
+    live = data.live || null;
+    saveState.textContent = bound
+      ? "saved to " + bound + " and armed. open or reload a tab."
+      : "saved. open or reload a tab.";
+    loadDrawer().catch(() => {});
   } catch (e) {
     saveState.textContent = "not saved: desk unreachable";
   }
 }
 
 saveBtn.addEventListener("click", save);
+drawerSaveBtn.addEventListener("click", () => putInDrawer(false));
+drawerLiveBtn.addEventListener("click", () => putInDrawer(true));
+drawerDeleteBtn.addEventListener("click", removeFromDrawer);
+drawerNameEl.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    putInDrawer(false);
+  }
+});
 
 // Cmd+S / Ctrl+S saves the agent instead of the page.
 document.addEventListener("keydown", (ev) => {
@@ -148,7 +310,12 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
-load().catch(() => {
-  saveState.textContent = "could not load agent";
-});
+load()
+  .catch(() => {
+    saveState.textContent = "could not load agent";
+  })
+  .then(() => loadDrawer())
+  .catch(() => {
+    drawerState.textContent = "could not read the drawer";
+  });
 loadExamples().catch(() => {});
