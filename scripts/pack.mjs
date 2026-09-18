@@ -1,18 +1,22 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { dirname, join } from "path";
+import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { zipFiles, pngGlyph } from "./zip.mjs";
-import { wrapAgent } from "./wrap.mjs";
+import { wrapPacked } from "./wrap.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-export function packExtension({ origin, hosts, agentSource }) {
-  const o = String(origin || "http://127.0.0.1:8787").replace(/\/$/, "");
-  const matches = (hosts && hosts.length ? hosts : ["http://127.0.0.1/*", "http://localhost/*", "https://*/*"]).map(
-    (h) => String(h).trim(),
-  ).filter(Boolean);
+export const DEFAULT_HOSTS = ["https://*/*", "http://127.0.0.1/*", "http://localhost/*"];
 
-  const manifest = {
+export function buildManifest({ origin, hosts }) {
+  const o = String(origin || "http://127.0.0.1:8787").replace(/\/$/, "");
+  const matches = (hosts && hosts.length ? hosts : DEFAULT_HOSTS).map((h) => String(h).trim()).filter(Boolean);
+
+  // Host permissions are exactly the match list plus the desk. No <all_urls>:
+  // the agent runs where you said it may, and nowhere else.
+  const hostPermissions = Array.from(new Set([...matches, `${o}/*`]));
+
+  return {
     manifest_version: 3,
     name: "P",
     version: "0.2.0",
@@ -23,8 +27,10 @@ export function packExtension({ origin, hosts, agentSource }) {
     },
     icons: { 16: "icon16.png", 32: "icon32.png" },
     background: { service_worker: "background.js" },
-    permissions: ["scripting", "webNavigation", "activeTab", "tabs"],
-    host_permissions: ["<all_urls>", ...matches, `${o}/*`],
+    // userScripts lets the worker inject a code string past the page's CSP.
+    // Chrome shows an "Allow User Scripts" toggle for it. Off, we fall back to eval.
+    permissions: ["scripting", "webNavigation", "activeTab", "userScripts"],
+    host_permissions: hostPermissions,
     content_scripts: [
       {
         matches,
@@ -45,13 +51,18 @@ export function packExtension({ origin, hosts, agentSource }) {
       },
     ],
   };
+}
+
+export function packExtension({ origin, hosts, agentSource }) {
+  const o = String(origin || "http://127.0.0.1:8787").replace(/\/$/, "");
+  const manifest = buildManifest({ origin: o, hosts });
 
   const background = readFileSync(join(root, "extension/background.js"), "utf8").replaceAll(
     "__PA_ORIGIN__",
     o,
   );
   const boot = `window.__PA_ORIGIN = ${JSON.stringify(o)};\n`;
-  const inject = wrapAgent(agentSource || readFileSync(join(root, "agents/hello.js"), "utf8"));
+  const inject = wrapPacked(agentSource || readFileSync(join(root, "agents/hello.js"), "utf8"));
   const bridge = readFileSync(join(root, "extension/bridge.js"), "utf8");
   const readme = `
  ____                     _
@@ -70,8 +81,11 @@ lives on the desk at ${o}, not in these files.
    Windows Extract All sometimes nests an extra folder. Go in one level.
 2. chrome://extensions  (Edge: edge://extensions)
 3. Developer mode on. Load unpacked on THIS folder.
-4. Pin P. Green means armed. Hover is just P.
-5. Desk: ${o}
+4. Open the extension's Details and turn on "Allow User Scripts" if
+   Chrome shows it. That lets the desk swap code on sites with a strict
+   Content Security Policy. Without it those sites keep this packed copy.
+5. Pin P. Green means armed. Hover is just P.
+6. Desk: ${o}
    Use 127.0.0.1, not localhost. Windows maps localhost to IPv6
    sometimes and the worker cannot fetch the agent.
    Node 18+ is only for the desk. This packed copy still runs
@@ -93,7 +107,11 @@ Chrome, Edge, Brave, or Chromium. Not Safari. Not Firefox.
   ]);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Compare paths, not URL strings. On Windows import.meta.url is file:///C:/...
+// while argv[1] is C:\..., and the old string compare silently never matched.
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
   const origin = process.env.AS_ORIGIN || "http://127.0.0.1:8787";
   const buf = packExtension({ origin });
   const out = join(root, "dist/pagearm-extension.zip");

@@ -35,10 +35,11 @@
             <li>Mac, Windows, or Linux. Chrome, Edge, Brave, or Chromium. Not Safari. Not Firefox.</li>
             <li>Download the zip. Unzip it. Keep the folder that contains <code>manifest.json</code> (Windows Extract All sometimes nests an extra folder).</li>
             <li><code>chrome://extensions</code> or <code>edge://extensions</code> → Developer mode → Load unpacked.</li>
+            <li>Extension Details → turn on <strong>Allow User Scripts</strong> if Chrome shows it. That lets hot-swap through a strict CSP.</li>
             <li>Pin <strong>P</strong>. Hover is P. Green means the agent armed.</li>
             <li>Keep this desk open at <code>127.0.0.1</code> while you edit. No reinstall. No re-drag.</li>
           </ol>
-          <label class="muted" for="hosts">Host patterns (repack after changing)</label>
+          <label class="muted" for="hosts">Host patterns. The agent runs only here. Repack after changing.</label>
           <textarea id="hosts" rows="4" spellcheck="false">https://*/*
 http://127.0.0.1/*
 http://localhost/*</textarea>

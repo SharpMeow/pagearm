@@ -23,6 +23,11 @@ The user Load-unpacks a thin MV3 shell once. After that, the living code is `GET
 - Agent source lives in `agents/` and on the desk textarea. `scripts/wrap.mjs` is the boring IIFE. Do not clever it up.
 - Host pattern changes need a new zip and an extension Reload. Hot-swap cannot invent `host_permissions`.
 - Toolbar letter is **P**. Message source is `pa`. Globals: `__pagearm`, `__agent`, `__PA_ORIGIN`, `__PA_VER`.
+- The live agent runs only on the manifest's host list and never on the desk page. No `<all_urls>`. Permissions: `scripting`, `webNavigation`, `activeTab`, `userScripts`.
+- Hot-swap goes through `chrome.userScripts.execute` when the user has **Allow User Scripts** on, and falls back to `eval` otherwise. `__PA_VER` is written after the code ran, never before.
+- `arm()` may run twice on a page load (packed copy, then live). Write it idempotent.
+- The desk binds `127.0.0.1`, has no CORS, checks `Host`, `Origin`, and `Sec-Fetch-Site` on save, and rejects source that does not parse.
+- `npm run check` packs in memory, reads the zip back, and validates the manifest and every script. Add a line there when you add a promise.
 - License is Business Source License 1.1. Do not relicense as MIT. Do not add analytics. Do not claim the page cannot see you.
 - American English. No em dashes. Warm comments.
 - One zip for Mac, Windows, and Linux. Do not add a .app, an .exe, or a distro package.

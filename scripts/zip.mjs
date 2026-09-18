@@ -1,4 +1,4 @@
-import { deflateSync, deflateRawSync, crc32 } from "zlib";
+import { deflateSync, deflateRawSync } from "zlib";
 
 function concat(parts) {
   const len = parts.reduce((n, p) => n + p.length, 0);
@@ -9,6 +9,24 @@ function concat(parts) {
     o += p.length;
   }
   return out;
+}
+
+// zlib.crc32 only showed up in Node 22.2 (and 20.15). The table is short, and
+// we promised Node 18, so we bring our own.
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+export function crc32(data) {
+  let c = 0xffffffff;
+  for (let i = 0; i < data.length; i++) c = CRC_TABLE[(c ^ data[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
 }
 
 function u16(n) {
@@ -48,7 +66,7 @@ export function zipFiles(files) {
   for (const file of files) {
     const name = enc.encode(file.name.replace(/\\/g, "/"));
     const data = file.data;
-    const crc = crc32(data) >>> 0;
+    const crc = crc32(data);
     const compressed = new Uint8Array(deflateRawSync(Buffer.from(data), { level: 9 }));
     const local = concat([
       u32(0x04034b50),
@@ -139,7 +157,7 @@ export function pngGlyph(size, rgb, letter = "P") {
   function chunk(type, data) {
     const tenc = new TextEncoder().encode(type);
     const body = concat([tenc, data]);
-    const crc = crc32(body) >>> 0;
+    const crc = crc32(body);
     return concat([be32(data.length), body, be32(crc)]);
   }
   const ihdr = concat([be32(size), be32(size), new Uint8Array([8, 6, 0, 0, 0])]);
