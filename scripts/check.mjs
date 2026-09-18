@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import { inflateRawSync } from "zlib";
 import { request as httpRequest } from "http";
 import { Script, createContext } from "vm";
-import { packExtension, buildManifest, TARGETS, normalizeTarget, zipName } from "./pack.mjs";
+import { packExtension, buildManifest, TARGETS, normalizeTarget, zipName, VERSION } from "./pack.mjs";
 import { wrapAgent, wrapPacked } from "./wrap.mjs";
 import { crc32 } from "./zip.mjs";
 import { compileError, drawerName, drawerList, server } from "./serve.mjs";
@@ -70,6 +70,7 @@ function readZip(buf) {
 }
 
 const origin = "http://127.0.0.1:8787";
+const pkgVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 const text = (files, n) => Buffer.from(files[n] || new Uint8Array()).toString("utf8");
 
 // Every browser gets the same eight files and its own manifest. Pack all three
@@ -100,6 +101,8 @@ for (const target of TARGETS) {
   }
   if (manifest) {
     ok(manifest.manifest_version === 3, "manifest v3");
+    ok(manifest.version === pkgVersion && manifest.version === VERSION,
+      "manifest version is package.json's version, written once");
     ok(!manifest.host_permissions.includes("<all_urls>"), "no <all_urls>: the agent runs only on the host list");
     ok(manifest.host_permissions.includes(origin + "/*"), "desk origin is a host permission");
     ok(!manifest.permissions.includes("tabs"), "no unused tabs permission");
@@ -156,6 +159,9 @@ for (const [label, src] of [["background.js", shell], ["bridge.js", bridgeSrc]])
 ok(/webNavigation\.onHistoryStateUpdated/.test(shell) && /if \(api\.webNavigation\.onHistoryStateUpdated\)/.test(shell),
   "background.js guards the navigation event Safari does not have");
 ok(/type === "nav"/.test(shell) && /type: "nav"/.test(bridgeSrc), "the bridge covers that gap with a nav message");
+ok(/type === "oops"/.test(shell) && /type: "oops"/.test(bridgeSrc), "a throw in the page travels to the background");
+ok(/quiet\(fetch\(ORIGIN \+ "\/api\/oops"/.test(shell), "and on to the desk, as a promise nobody leaves unhandled");
+ok(/text\/plain/.test(shell), "posted as text/plain, so no browser stops for a preflight the desk cannot answer");
 ok(normalizeTarget("chrome") === "chromium" && normalizeTarget("ff") === "firefox" && normalizeTarget("nonsense") === "chromium",
   "browser names normalize to a known target");
 ok(buildManifest({ origin, target: "firefox" }).background.scripts.length === 1, "buildManifest is callable on its own");
@@ -254,6 +260,35 @@ try {
   const nonsense = await desk("//");
   ok(nonsense.status === 500, "a request the desk cannot parse is a 500");
   ok((await desk("/api/drawer")).status === 200, "and the desk is still serving afterward");
+  // The shell reports a throw to the desk. A site you visit must not be able to.
+  const told = await desk("/api/oops", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ script: "ruler", message: "x is not defined", where: "https://example.com/a" }),
+  });
+  ok(told.status === 200, "the shell may tell the desk what threw");
+  const heard = await (await desk("/api/oops")).json();
+  ok(heard.errors[0].script === "ruler" && heard.errors[0].message === "x is not defined" && heard.errors[0].at > 0,
+    "and the desk keeps it, with a time on it");
+  const forged = await desk("/api/oops", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ script: "nonsense", message: "from a website" }),
+  });
+  ok(forged.status === 403, "a site you visit may not");
+  for (let i = 0; i < 14; i++) {
+    await desk("/api/oops", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", Origin: "moz-extension://pretendthisisreal" },
+      body: JSON.stringify({ script: "ruler", message: "number " + i, where: "https://example.com/a" }),
+    });
+  }
+  const many = await (await desk("/api/oops")).json();
+  ok(many.errors.length === 10 && many.errors[0].message === "number 13",
+    "it keeps the last ten, newest first, and does not grow forever");
+  const cleared = await desk("/api/oops", { method: "DELETE" });
+  ok(cleared.status === 200 && (await (await desk("/api/oops")).json()).errors.length === 0, "and the desk can clear them");
+
   const icon = await desk("/favicon.png");
   ok(icon.status === 200 && icon.headers.get("content-type") === "image/png",
     "the desk has a favicon instead of 404ing at itself");

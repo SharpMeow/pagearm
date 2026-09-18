@@ -18,7 +18,9 @@ const currentPath = join(root, "agents/current.js");
 // the stack changes the body of /agent.js, which changes its hash, which is the
 // whole hot-swap. The browser never learns that any of this happened.
 const drawerDir = join(root, "agents/drawer");
-const livePath = join(root, "agents/current.json");
+const stackPath = join(root, "agents/stack.json");
+// What the file was called when it held one name. Read once, then forgotten.
+const oldStackPath = join(root, "agents/current.json");
 const MAX_BODY = 1024 * 1024;
 const MAX_STACK = 16;
 
@@ -44,10 +46,10 @@ function drawerPath(name) {
 export function loadStack() {
   let raw = [];
   try {
-    const saved = JSON.parse(readFileSync(livePath, "utf8"));
+    const saved = JSON.parse(readFileSync(existsSync(stackPath) ? stackPath : oldStackPath, "utf8"));
     if (Array.isArray(saved.stack)) raw = saved.stack;
-    // A desk that last ran the one-script version wrote { name }. Read it once
-    // and it becomes a stack of one the next time anything saves.
+    // A desk that last ran the one-script version wrote { name } into
+    // current.json. Read it once and the next save writes stack.json instead.
     else if (saved.name) raw = [saved.name];
   } catch (e) {
     raw = [];
@@ -67,7 +69,11 @@ export function loadStack() {
 
 function setStack(names) {
   mkdirSync(join(root, "agents"), { recursive: true });
-  writeFileSync(livePath, JSON.stringify({ stack: names || [] }) + "\n", "utf8");
+  writeFileSync(stackPath, JSON.stringify({ stack: names || [] }) + "\n", "utf8");
+  // Tidy up after the desk that used the old name, so the two cannot disagree.
+  try {
+    if (existsSync(oldStackPath)) rmSync(oldStackPath);
+  } catch (e) {}
 }
 
 export function drawerList() {
@@ -171,6 +177,15 @@ function loopbackHost(req) {
   return name === "127.0.0.1" || name === "localhost" || name === "::1";
 }
 
+// The last few throws the agent hit out in the world. In memory on purpose:
+// this is a workshop light, not a log file, and it should not outlive the desk.
+const MAX_OOPS = 10;
+let oopsLog = [];
+
+function clamp(value, max) {
+  return String(value === undefined || value === null ? "" : value).slice(0, max);
+}
+
 // The desk page is the only thing that writes. A cross-site page cannot, even
 // though it can reach 127.0.0.1 from the same browser.
 function sameSite(req) {
@@ -179,6 +194,14 @@ function sameSite(req) {
   const origin = req.headers.origin;
   if (origin && origin !== originFrom(req)) return false;
   return true;
+}
+
+// The shell writes here too, and it is not same-origin with the desk. Its
+// Origin is an extension scheme, which a web page cannot forge, so a site you
+// visit still cannot fill this with noise.
+function fromShell(req) {
+  if (/^(chrome|moz|safari-web)-extension:\/\//.test(String(req.headers.origin || ""))) return true;
+  return sameSite(req);
 }
 
 // Where the human's first line lands inside the wrapper. Measured from the
@@ -434,6 +457,46 @@ async function handle(req, res) {
     // already the live change. Nothing to copy, nothing to fall out of step.
     const armed = loadStack().includes(name);
     send(res, 200, JSON.stringify({ ok: true, name, stack: loadStack(), armed, scripts: drawerList() }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/oops") {
+    if (req.method === "GET") {
+      send(res, 200, JSON.stringify({ errors: oopsLog }), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method === "DELETE") {
+      if (!sameSite(req)) {
+        send(res, 403, "only the desk may clear that");
+        return;
+      }
+      oopsLog = [];
+      send(res, 200, JSON.stringify({ ok: true, errors: oopsLog }), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, "not that way");
+      return;
+    }
+    if (!fromShell(req)) {
+      send(res, 403, "only the shell may report that");
+      return;
+    }
+    let told = {};
+    try {
+      told = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    oopsLog.unshift({
+      script: clamp(told.script, 80),
+      message: clamp(told.message, 300),
+      where: clamp(told.where, 200),
+      at: Date.now(),
+    });
+    oopsLog = oopsLog.slice(0, MAX_OOPS);
+    send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
     return;
   }
 

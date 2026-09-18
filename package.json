@@ -11,6 +11,7 @@
   "scripts": {
     "start": "node scripts/serve.mjs",
     "pack": "node scripts/pack.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "test": "node scripts/check.mjs"
   }
 }

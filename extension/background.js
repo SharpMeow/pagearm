@@ -171,6 +171,16 @@ api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     }
     return;
   }
+  if (msg.type === "oops") {
+    // The page already painted P red through the pip that came with this.
+    // All that is left is telling the desk, which is where you are looking.
+    tellDesk({
+      script: String(msg.script || "").slice(0, 80),
+      message: String(msg.message || "").slice(0, 300),
+      where: String(msg.where || "").slice(0, 200),
+    });
+    return;
+  }
   if (msg.type === "capture") {
     // Capture the window the asking tab lives in, not whichever window has focus.
     var windowId = tab && typeof tab.windowId === "number" ? tab.windowId : null;
@@ -183,6 +193,26 @@ api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return true;
   }
 });
+
+// An agent that throws on every navigation would otherwise be a firehose, so
+// the same complaint twice in five seconds only travels once. Fire and forget:
+// a desk that is asleep is not an error worth reporting about an error.
+var lastOops = { key: "", at: 0 };
+function tellDesk(entry) {
+  var key = entry.script + "|" + entry.message;
+  var now = Date.now();
+  if (key === lastOops.key && now - lastOops.at < 5000) return;
+  lastOops = { key: key, at: now };
+  try {
+    quiet(fetch(ORIGIN + "/api/oops", {
+      method: "POST",
+      // text/plain keeps this a simple request, so no browser stops to ask the
+      // desk for a preflight it does not answer.
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(entry),
+    }));
+  } catch (e) {}
+}
 
 function djb(s) {
   var h = 5381;

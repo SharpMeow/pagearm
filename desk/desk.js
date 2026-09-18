@@ -15,6 +15,7 @@ const drawerLiveBtn = document.getElementById("drawer-live");
 const drawerDeleteBtn = document.getElementById("drawer-delete");
 const stackListEl = document.getElementById("stack-list");
 const drawerCountEl = document.getElementById("drawer-count");
+const oopsEl = document.getElementById("oops");
 
 // Two different things. `bound` is the drawer script the editor is holding.
 // `stack` is the ordered list the browser is actually running, which is usually
@@ -415,6 +416,60 @@ async function save() {
   }
 }
 
+function ago(at) {
+  const secs = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (secs < 60) return secs + "s ago";
+  if (secs < 3600) return Math.round(secs / 60) + "m ago";
+  return Math.round(secs / 3600) + "h ago";
+}
+
+function host(where) {
+  try {
+    return new URL(where).host;
+  } catch (e) {
+    return where || "somewhere";
+  }
+}
+
+// A script that throws out on a real page used to say so in that page's
+// console, which is not where you are. Now it says so here.
+function showOops(entry) {
+  if (!entry) {
+    oopsEl.hidden = true;
+    oopsEl.textContent = "";
+    return;
+  }
+  oopsEl.hidden = false;
+  oopsEl.innerHTML = "";
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = pretty(entry.script || "the agent") + " threw on " + host(entry.where);
+  const said = document.createElement("span");
+  said.className = "said";
+  said.textContent = entry.message || "";
+  const when = document.createElement("span");
+  when.className = "when";
+  when.textContent = ago(entry.at || Date.now());
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "clear";
+  clear.addEventListener("click", async () => {
+    showOops(null);
+    try { await fetch("/api/oops", { method: "DELETE" }); } catch (e) {}
+  });
+  oopsEl.append(who, said, when, clear);
+}
+
+async function pollOops() {
+  // Nothing to watch while the desk is in a background tab.
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await fetch("/api/oops");
+    const data = await r.json();
+    showOops((data.errors || [])[0] || null);
+  } catch (e) {}
+}
+
 // A syntax error comes back with the line it broke on. Put the cursor there,
 // because hunting for line 34 by eye is the least pleasant part of a typo.
 function showBroken(message) {
@@ -491,3 +546,7 @@ load()
     drawerState.textContent = "could not read the drawer";
   });
 loadExamples().catch(() => {});
+
+pollOops();
+setInterval(pollOops, 4000);
+document.addEventListener("visibilitychange", pollOops);

@@ -285,9 +285,14 @@ Saving, deleting, and the drawer itself:
 
 A drawer name is letters, digits, dash, and underscore, lowercased. It becomes a filename, so it is dull on purpose, and a name that tries to climb out of the folder is a 400. A stack is capped at sixteen scripts, which is more than anyone should want.
 
-`agents/drawer/` and `agents/current.json`, which holds the stack, are gitignored. The drawer is yours, not the repo's. Copy a script into `agents/` if you want it in version control.
+`agents/drawer/` and `agents/stack.json`, which holds the stack, are gitignored. The drawer is yours, not the repo's. Copy a script into `agents/` if you want it in version control.
+
+**When a script throws out in the world**, it used to say so in that page's console, which is not where you are looking. Now **P** goes red and the desk names it: which script, what it said, and which page it was on. The shell posts it to the desk, the desk keeps the last ten in memory and never writes them down, and only the desk page and the extension may write there. Same complaint twice inside five seconds travels once, so an agent throwing on every navigation does not become a firehose.
 
 ```
+GET    /api/oops                the last few throws, newest first
+POST   /api/oops                the shell reporting one
+DELETE /api/oops                clear them
 GET    /api/drawer              the shelf plus the stack
 GET    /api/drawer/:name        one script
 POST   /api/drawer/:name        save it, syntax-checked first
@@ -332,7 +337,7 @@ AS_TARGET=firefox npm run pack    # just one
 
 Writes `dist/pagearm-chromium.zip`, `dist/pagearm-firefox.zip`, and `dist/pagearm-safari.zip`. Same bytes the desk download button serves. No surprises.
 
-`npm run check` packs all three in memory, reads each zip back, and validates every manifest and script, including the four keys the browsers disagree about. Mozilla's own `web-ext lint` passes on the Firefox build with one warning, `DANGEROUS_EVAL`, which is the CSP fallback doing exactly what the README says it does.
+`npm run check`, or `npm test`, packs all three in memory, reads each zip back, and validates every manifest and script, including the four keys the browsers disagree about. Mozilla's own `web-ext lint` passes on the Firefox build with one warning, `DANGEROUS_EVAL`, which is the CSP fallback doing exactly what the README says it does.
 
 ---
 
