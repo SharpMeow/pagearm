@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname, join, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { Script } from "vm";
-import { packExtension } from "./pack.mjs";
+import { packExtension, normalizeTarget, zipName } from "./pack.mjs";
 import { wrapAgent } from "./wrap.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -143,14 +143,18 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/extension.zip") {
     const hosts = parseHosts(url.searchParams.get("hosts") || "");
+    // Same shell, one manifest per house. Default to Chromium because that is
+    // what most people have open, but the desk asks before it hands one over.
+    const target = normalizeTarget(url.searchParams.get("browser") || "chromium");
     const zip = packExtension({
       origin: originFrom(req),
       hosts,
       agentSource: loadAgent(),
+      target,
     });
     res.writeHead(200, {
       "Content-Type": "application/zip",
-      "Content-Disposition": 'attachment; filename="pagearm-extension.zip"',
+      "Content-Disposition": `attachment; filename="${zipName(target)}"`,
       "Cache-Control": "no-store",
     });
     res.end(Buffer.from(zip));

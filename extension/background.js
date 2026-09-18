@@ -1,10 +1,32 @@
 // Thin shell. This file should get boring and stay boring.
 // The living agent is GET {desk}/agent.js, hashed, then injected into MAIN.
 
+// One shell, three houses. Chromium and Safari hand us a service worker,
+// Firefox an event page. `browser` is promise-first and exists in Firefox and
+// Safari; Chromium only has `chrome`. Pick one, then stop thinking about it.
+const api = (typeof globalThis.browser !== "undefined" && globalThis.browser.runtime)
+  ? globalThis.browser
+  : globalThis.chrome;
+// True where the API answers with promises and there is no lastError dance.
+const PROMISED = typeof globalThis.browser !== "undefined" && !!globalThis.browser.runtime;
+
 const ORIGIN = "__PA_ORIGIN__";
 const COLORS = { idle: "#8b9098", work: "#c8a24a", ok: "#b8ff3c", err: "#e24b4b" };
 const FETCH_TIMEOUT_MS = 1500;
 const CACHE_MS = 1500;
+
+// Reading lastError is how Chromium is told we do not care. Elsewhere it is
+// simply not there, so the read is wrapped and means nothing.
+function hush() {
+  try { void api.runtime.lastError; } catch (e) {}
+}
+
+// Firefox and Safari return promises from the same calls Chromium answers with
+// a callback. An ignored rejection there is an unhandled rejection in the log.
+function quiet(p) {
+  try { if (p && typeof p.catch === "function") p.catch(function () {}); } catch (e) {}
+  return p;
+}
 
 // The agent only runs where the manifest says it may. The content scripts and
 // the live path read the same list, so the two never disagree about a site.
@@ -30,7 +52,7 @@ function patternToRegExp(p) {
 const MATCHES = (function () {
   var out = [];
   try {
-    (chrome.runtime.getManifest().content_scripts || []).forEach(function (cs) {
+    (api.runtime.getManifest().content_scripts || []).forEach(function (cs) {
       (cs.matches || []).forEach(function (p) {
         var re = patternToRegExp(p);
         if (re) out.push(re);
@@ -39,6 +61,10 @@ const MATCHES = (function () {
   } catch (e) {}
   return out;
 })();
+
+// Safari is the one house without a history-state navigation event. Only there
+// does the bridge's nav message have work to do.
+const NEEDS_NAV_RELAY = !api.webNavigation.onHistoryStateUpdated;
 
 function onHost(url) {
   try {
@@ -52,11 +78,30 @@ function onHost(url) {
   }
 }
 
+// A service worker has OffscreenCanvas. A Firefox event page is a document and
+// has both. If a browser hands us neither, the packed PNG stays on the toolbar
+// and the badge still carries the news.
+function surface(size) {
+  try {
+    if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(size, size);
+  } catch (e) {}
+  try {
+    if (typeof document !== "undefined" && document.createElement) {
+      var c = document.createElement("canvas");
+      c.width = size;
+      c.height = size;
+      return c;
+    }
+  } catch (e2) {}
+  return null;
+}
+
 function paintIcon(state, show, tabId, mark) {
   var color = COLORS[state] || COLORS.idle;
   var alpha = show ? 0.95 : 0.35;
   function stamp(size) {
-    var c = new OffscreenCanvas(size, size);
+    var c = surface(size);
+    if (!c) return null;
     var g = c.getContext("2d");
     if (!g) return null;
     g.clearRect(0, 0, size, size);
@@ -73,35 +118,68 @@ function paintIcon(state, show, tabId, mark) {
   // With a tabId we paint only that tab. Without one (startup) we paint the default.
   var scope = tabId ? { tabId: tabId } : {};
   if (i16 && i32) {
-    try { chrome.action.setIcon(Object.assign({ imageData: { 16: i16, 32: i32 } }, scope)); } catch (e1) {}
-    void chrome.runtime.lastError;
+    try { quiet(api.action.setIcon(Object.assign({ imageData: { 16: i16, 32: i32 } }, scope))); } catch (e1) {}
+    hush();
   }
   try {
-    chrome.action.setBadgeText(Object.assign({ text: show && mark ? String(mark).slice(0, 4) : "" }, scope));
-    chrome.action.setBadgeBackgroundColor(Object.assign({ color: "#1a1a18" }, scope));
-    try { chrome.action.setBadgeTextColor(Object.assign({ color: "#f4f4f4" }, scope)); } catch (eFg) {}
+    quiet(api.action.setBadgeText(Object.assign({ text: show && mark ? String(mark).slice(0, 4) : "" }, scope)));
+    quiet(api.action.setBadgeBackgroundColor(Object.assign({ color: "#1a1a18" }, scope)));
+    // Safari has no setBadgeTextColor. Its badge picks its own and that is fine.
+    try { quiet(api.action.setBadgeTextColor(Object.assign({ color: "#f4f4f4" }, scope))); } catch (eFg) {}
   } catch (eBadge) {}
-  void chrome.runtime.lastError;
+  hush();
 }
 
-chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+// captureVisibleTab is promise-shaped in Firefox and Safari and callback-shaped
+// in Chromium. One wrapper, one shape, an empty string when it does not happen.
+function captureVisible(windowId) {
+  return new Promise(function (resolve) {
+    var opts = { format: "jpeg", quality: 90 };
+    try {
+      if (PROMISED) {
+        var p = windowId === null
+          ? api.tabs.captureVisibleTab(opts)
+          : api.tabs.captureVisibleTab(windowId, opts);
+        p.then(function (url) { resolve(url || ""); }, function () { resolve(""); });
+        return;
+      }
+      var cb = function (url) { hush(); resolve(url || ""); };
+      if (windowId === null) api.tabs.captureVisibleTab(opts, cb);
+      else api.tabs.captureVisibleTab(windowId, opts, cb);
+    } catch (e) {
+      resolve("");
+    }
+  });
+}
+
+api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (!msg) return;
   var tab = sender && sender.tab;
   if (msg.type === "pip") {
     paintIcon(msg.state || "idle", msg.show !== false, tab && tab.id, msg.mark);
     return;
   }
+  if (msg.type === "nav") {
+    // Safari has no webNavigation.onHistoryStateUpdated, so the bridge says when
+    // the page moved under its own feet. Where the event does exist it already
+    // said so, and arming twice for one route change is just noise.
+    if (!NEEDS_NAV_RELAY) return;
+    var navTab = tab && typeof tab.id === "number" ? tab.id : null;
+    var navFrame = sender && typeof sender.frameId === "number" ? sender.frameId : 0;
+    if (navTab !== null && onHost(String(msg.url || ""))) {
+      arm(navTab, [navFrame], false).catch(function () {});
+    }
+    return;
+  }
   if (msg.type === "capture") {
     // Capture the window the asking tab lives in, not whichever window has focus.
     var windowId = tab && typeof tab.windowId === "number" ? tab.windowId : null;
-    try {
-      chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 90 }, function (url) {
-        void chrome.runtime.lastError;
-        try { sendResponse({ dataUrl: url || "" }); } catch (eR) {}
-      });
-    } catch (eCap) {
-      try { sendResponse({ dataUrl: "" }); } catch (eR2) {}
-    }
+    var answer = captureVisible(windowId).then(function (dataUrl) { return { dataUrl: dataUrl }; });
+    // Firefox and Safari want the promise. Chromium wants the old callback.
+    if (PROMISED) return answer;
+    answer.then(function (res) {
+      try { sendResponse(res); } catch (eR) {}
+    });
     return true;
   }
 });
@@ -142,7 +220,7 @@ async function liveCode() {
 }
 
 function exec(opts) {
-  return chrome.scripting.executeScript(opts);
+  return api.scripting.executeScript(opts);
 }
 
 function frameTarget(tabId, frameIds) {
@@ -197,35 +275,58 @@ function liveSource(src, ver) {
 }
 
 function userScripts() {
-  // Reading chrome.userScripts throws when the user has not flipped the toggle.
+  // Reading it throws in Chromium when the toggle is off, and in Firefox the
+  // namespace is simply absent until the human grants the optional permission.
   try {
-    return chrome.userScripts && typeof chrome.userScripts.execute === "function" ? chrome.userScripts : null;
+    return api.userScripts && typeof api.userScripts.execute === "function" ? api.userScripts : null;
   } catch (e) {
     return null;
   }
 }
 
-// Put live code into the given frames. chrome.userScripts.execute (Chrome 135+,
-// with "Allow User Scripts" on) is not subject to the page's CSP. Without it we
-// eval, which strict-CSP sites refuse. Either way the caller re-pings afterward
-// to learn which frames actually took the new version.
+// Firefox keeps userScripts behind an optional permission, so a click on P is
+// the only moment it will let us ask. We ask once, and we take no for an answer.
+// Chromium lists userScripts as a required permission and uses a toggle on the
+// Details page instead, so this never fires there. Safari has no such API.
+var askedForUserScripts = false;
+async function askForUserScripts() {
+  if (askedForUserScripts || userScripts()) return;
+  askedForUserScripts = true;
+  try {
+    var optional = (api.runtime.getManifest().optional_permissions || []);
+    if (optional.indexOf("userScripts") < 0) return;
+    if (!api.permissions || typeof api.permissions.request !== "function") return;
+    if (await api.permissions.contains({ permissions: ["userScripts"] })) return;
+    await api.permissions.request({ permissions: ["userScripts"] });
+  } catch (e) {}
+}
+
+// Firefox validates option bags strictly and rejects a property it does not
+// know, so a refusal gets one more try with only the properties everyone has.
+async function runUserScript(us, target, code) {
+  try {
+    await us.execute({ target: target, world: "MAIN", injectImmediately: true, js: [{ code: code }] });
+    return true;
+  } catch (e) {}
+  try {
+    await us.execute({ target: target, world: "MAIN", js: [{ code: code }] });
+    return true;
+  } catch (e2) {}
+  return false;
+}
+
+// Put live code into the given frames. userScripts.execute (Chrome 135+ with
+// "Allow User Scripts" on, Firefox 153+ once the permission is granted) is not
+// subject to the page's CSP. Without it we eval, which strict-CSP sites refuse.
+// Either way the caller re-pings afterward to learn which frames took the code.
 async function injectCode(tabId, frameIds, src, ver) {
   var code = liveSource(src, ver);
+  var target = frameTarget(tabId, frameIds);
   var us = userScripts();
-  if (us) {
-    try {
-      await us.execute({
-        target: frameTarget(tabId, frameIds),
-        world: "MAIN",
-        injectImmediately: true,
-        js: [{ code: code }],
-      });
-      return;
-    } catch (e) {}
-  }
+  if (us && (await runUserScript(us, target, code))) return;
   try {
     await exec({
-      target: frameTarget(tabId, frameIds),
+      target: target,
       world: "MAIN",
       func: function (code) {
         try {
@@ -288,22 +389,26 @@ async function arm(tabId, frameIds, force) {
   await injectPacked(tabId, ids(bare));
 }
 
-chrome.webNavigation.onCompleted.addListener(function (details) {
+api.webNavigation.onCompleted.addListener(function (details) {
   if (!onHost(details.url)) return;
   arm(details.tabId, [details.frameId], false).catch(function () {});
 });
 
-chrome.webNavigation.onHistoryStateUpdated.addListener(function (details) {
-  if (!onHost(details.url)) return;
-  arm(details.tabId, [details.frameId], false).catch(function () {});
-});
+// Safari does not have this one. The bridge covers it with a nav message.
+if (api.webNavigation.onHistoryStateUpdated) {
+  api.webNavigation.onHistoryStateUpdated.addListener(function (details) {
+    if (!onHost(details.url)) return;
+    arm(details.tabId, [details.frameId], false).catch(function () {});
+  });
+}
 
-chrome.action.onClicked.addListener(function (tab) {
+api.action.onClicked.addListener(function (tab) {
   if (!tab.id) return;
+  askForUserScripts().catch(function () {});
   arm(tab.id, undefined, true).catch(function () {});
 });
 
-chrome.runtime.onInstalled.addListener(function () {
+api.runtime.onInstalled.addListener(function () {
   paintIcon("idle", false);
 });
 

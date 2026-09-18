@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "PageArm. A personal Chrome runtime for Mac, Windows, and Linux: install a thin shell once, keep the agent on a URL.",
+  "description": "PageArm. A personal browser runtime for Chromium, Firefox, and Safari on Mac, Windows, and Linux: install a thin shell once, keep the agent on a URL.",
   "license": "BUSL-1.1",
   "engines": {
     "node": ">=18"

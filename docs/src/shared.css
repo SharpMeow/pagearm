@@ -1,0 +1,62 @@
+/* Shared look for the README images. Same palette as the desk. */
+/* Latin subsets pulled from Google Fonts once and kept here, so rendering these
+   images needs no network. Inter and Source Serif 4 and JetBrains Mono are all
+   SIL Open Font License. */
+@import url("fonts.css");
+
+:root {
+  --bg: #0b0c09;
+  --ink: #f2f4ea;
+  --muted: #9aa18a;
+  --dim: #6f7563;
+  --line: #23261e;
+  --panel: #121410;
+  --accent: #b8ff3c;
+  --gold: #e8b93c;
+  --red: #ff5f5f;
+  --gray: #9aa0a8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 17px/1.5 Inter, "Liberation Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: 40px 40px 40px;
+  display: flex;
+  flex-direction: column;
+}
+.kicker {
+  font-size: 12.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 500;
+}
+h1 {
+  font-family: "Source Serif 4", "Bitstream Charter", "Liberation Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  margin: 14px 0 0;
+}
+.lede { color: var(--muted); margin-top: 14px; font-size: 19px; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 26px 28px;
+}
+.label {
+  font-size: 12.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 600;
+}
+code, .mono {
+  font-family: "JetBrains Mono", "DejaVu Sans Mono", ui-monospace, monospace;
+  font-size: 0.88em;
+  color: var(--accent);
+}
+.foot { color: var(--dim); font-size: 15px; margin-top: auto; padding-top: 22px; }
+strong { font-weight: 600; }

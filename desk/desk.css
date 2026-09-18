@@ -86,3 +86,8 @@ button, .button {
 }
 .examples button:hover { color: var(--ink); border-color: var(--muted); }
 label { display: block; margin-top: 8px; }
+#browsers button[aria-pressed="true"] {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
