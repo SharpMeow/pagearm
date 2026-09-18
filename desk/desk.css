@@ -91,3 +91,35 @@ label { display: block; margin-top: 8px; }
   background: var(--accent);
   border-color: var(--accent);
 }
+.drawer { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
+.drawer h2 { margin-bottom: 0; }
+.drawer-controls { margin-top: 12px; justify-content: flex-start; }
+#drawer-name {
+  flex: 1 1 180px;
+  min-width: 140px;
+  height: 40px;
+  background: #0b0c09;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 12px;
+  font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+#drawer-name::placeholder { color: var(--muted); }
+button.quiet {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+button.quiet:hover { color: var(--ink); border-color: var(--muted); }
+#drawer-state { margin: 12px 0 0; }
+/* A dot, not a shout. Green means this is the one the browser is running. */
+#drawer-list button.live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+#drawer-list button[aria-pressed="true"] { color: var(--ink); border-color: var(--muted); }

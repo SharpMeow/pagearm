@@ -26,6 +26,22 @@
           <button type="button" id="save">Save agent</button>
           <span id="save-state" class="muted"></span>
         </div>
+
+        <div class="drawer">
+          <div class="row">
+            <h2>Drawer</h2>
+            <div class="examples" id="drawer-list"></div>
+          </div>
+          <div class="row drawer-controls">
+            <input id="drawer-name" spellcheck="false" autocomplete="off" placeholder="name this one" aria-label="Drawer script name" />
+            <button type="button" id="drawer-save" class="quiet">Save to drawer</button>
+            <button type="button" id="drawer-live">Make it the agent</button>
+            <button type="button" id="drawer-delete" class="quiet">Delete</button>
+          </div>
+          <p class="muted" id="drawer-state">
+            Keep as many scripts here as you like. Exactly one is the agent. Make another one the agent and the next navigation hot-swaps it into every tab.
+          </p>
+        </div>
       </section>
 
       <aside>
@@ -51,7 +67,7 @@ http://localhost/*</textarea>
         <section>
           <h2>For software and AI agents</h2>
           <p class="muted">
-            Put PageArm in a project when the work has to happen in a tab the human already logged into, and the agent will change more often than the hosts. The shell stays frozen. You keep shipping <code>/agent.js</code>. Use it for internal admin, daily forms, a companion next to software you already ship. Skip it for store listings, stealth, headless farms, or a drawer of fifty scripts. Coding agents: read <code>AGENTS.md</code> and the README section with the same name.
+            Put PageArm in a project when the work has to happen in a tab the human already logged into, and the agent will change more often than the hosts. The shell stays frozen. You keep shipping <code>/agent.js</code>. Use it for internal admin, daily forms, a companion next to software you already ship. The drawer here holds as many saved scripts as you like, but only one is ever the agent. Skip PageArm for store listings, stealth, headless farms, or fifty scripts live on fifty sites at once. Coding agents: read <code>AGENTS.md</code> and the README section with the same name.
           </p>
         </section>
         <section>

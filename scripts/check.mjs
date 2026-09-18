@@ -5,11 +5,12 @@ import { readFileSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { inflateRawSync } from "zlib";
+import { request as httpRequest } from "http";
 import { Script } from "vm";
 import { packExtension, buildManifest, TARGETS, normalizeTarget, zipName } from "./pack.mjs";
 import { wrapAgent, wrapPacked } from "./wrap.mjs";
 import { crc32 } from "./zip.mjs";
-import { compileError } from "./serve.mjs";
+import { compileError, drawerName, drawerList, server } from "./serve.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 let failures = 0;
@@ -167,6 +168,48 @@ for (const n of readdirSync(join(root, "agents")).filter((f) => f.endsWith(".js"
 }
 ok(compileError("agent.arm = () => { ok }") === null, "compileError accepts good source");
 ok(typeof compileError("agent.arm = (") === "string", "compileError rejects a syntax error");
+
+console.log("drawer");
+// A drawer name turns into a filename, so the only interesting question is
+// whether anything can climb out of the folder. Nothing may.
+ok(drawerName("Reading-Ruler_2") === "reading-ruler_2", "a drawer name is lowercased and kept");
+for (const bad of ["../evil", "a/b", "a.b", "", " ", "-lead", "x".repeat(49), "a\\b", "a b"]) {
+  ok(drawerName(bad) === null, "drawer name refused: " + JSON.stringify(bad));
+}
+ok(Array.isArray(drawerList()), "the drawer lists even when it does not exist yet");
+
+// Drive the real routes. Only the ones that cannot write, because a check is
+// not allowed to reach into the drawer you are actually using.
+const base = await new Promise((resolve) => {
+  server.listen(0, "127.0.0.1", () => resolve("http://127.0.0.1:" + server.address().port));
+});
+const desk = (path, init) => fetch(base + path, init);
+try {
+  const shelf = await desk("/api/drawer");
+  const body = await shelf.json();
+  ok(shelf.status === 200 && Array.isArray(body.scripts) && "live" in body, "GET /api/drawer answers with a shelf and a live pointer");
+  ok((await desk("/api/drawer/nope-not-here")).status === 404, "a script that is not in the drawer is a 404");
+  ok((await desk("/api/drawer/..%2Fevil")).status === 400, "a name that tries to climb out is refused");
+  const crossSite = await desk("/api/drawer/anything", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ source: "" }),
+  });
+  ok(crossSite.status === 403, "a cross-site page cannot write to the drawer");
+  // fetch refuses to forge a Host header, and a DNS rebind is exactly a forged
+  // Host header, so this one goes out over a plain socket.
+  const rebound = await new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: "127.0.0.1", port: server.address().port, path: "/api/drawer", headers: { Host: "evil.example" } },
+      (res) => { res.resume(); resolve(res.statusCode); },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+  ok(rebound === 403, "the drawer answers to 127.0.0.1 only");
+} finally {
+  await new Promise((resolve) => server.close(resolve));
+}
 
 // serve.mjs, pack.mjs, wrap.mjs and zip.mjs were all imported above, so they
 // already loaded. If one of them breaks, this script never gets this far.
