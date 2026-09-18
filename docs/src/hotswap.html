@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--
+  Source for docs/hotswap.png. Rendered at 1100x452 with a device scale factor
+  of 2, which is the 2200x904 the README shows. Edit the words here, not the PNG.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="shared.css" />
+    <style>
+      body { width: 1100px; min-height: 452px; }
+      h1 { font-size: 46px; line-height: 1.05; }
+      .flow { display: grid; grid-template-columns: 1fr 26px 1fr 26px 1fr; align-items: stretch; gap: 0 10px; margin-top: 26px; }
+      .arrow { color: var(--accent); font-size: 22px; display: flex; align-items: center; justify-content: center; }
+      .panel { height: 100%; }
+      .panel h3 { font-weight: 500; font-size: 19px; margin-top: 10px; }
+      .panel p.sub { color: var(--dim); font-size: 14.5px; margin-top: 7px; }
+      .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+    </style>
+  </head>
+  <body>
+    <p class="kicker">How a save becomes a live tab</p>
+    <h1>The agent is a URL, versioned by a hash</h1>
+
+    <div class="flow">
+      <section class="panel">
+        <p class="label">You</p>
+        <h3>Edit the agent. Hit Save.</h3>
+        <p class="sub">Desk at 127.0.0.1</p>
+      </section>
+      <div class="arrow">&rarr;</div>
+      <section class="panel">
+        <p class="label">Desk</p>
+        <h3>Serves <code>/agent.js</code></h3>
+        <p class="sub">Not the files in the zip</p>
+      </section>
+      <div class="arrow">&rarr;</div>
+      <section class="panel">
+        <p class="label">Background</p>
+        <h3>Fetches. Hashes. Decides.</h3>
+        <p class="sub">Worker in Chromium and Safari, event page in Firefox</p>
+      </section>
+    </div>
+
+    <div class="pair">
+      <section class="panel">
+        <p class="label">New hash</p>
+        <h3>Into MAIN world, every frame, including the awkward blank ones.</h3>
+        <p class="sub">The page can see you. That is the trade.</p>
+      </section>
+      <section class="panel">
+        <p class="label">Same hash</p>
+        <h3>Just call <code>agent.arm()</code> again. No reinstall. No reload.</h3>
+        <p class="sub">Desk asleep: packed <code>inject.js</code> still runs.</p>
+      </section>
+    </div>
+
+    <p class="foot">Host pattern changes still need a new zip and an extension reload. The browser owns <code>host_permissions</code>, not the desk.</p>
+  </body>
+</html>
