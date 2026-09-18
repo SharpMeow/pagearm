@@ -44,7 +44,8 @@ The two README images are rendered from `docs/src/*.html` at 1100 CSS pixels wid
 - The live agent runs only on the manifest's host list and never on the desk page. No `<all_urls>`. Permissions: `scripting`, `webNavigation`, `activeTab`, `userScripts`.
 - Hot-swap goes through `userScripts.execute` (Chrome 135+ with **Allow User Scripts** on, Firefox 153+ once the optional permission is granted at a click on P) and falls back to `eval` otherwise, which is always the case on Safari. `__PA_VER` is written after the code ran, never before.
 - `arm()` may run twice on a page load (packed copy, then live). Write it idempotent.
-- The desk binds `127.0.0.1`, has no CORS, checks `Host`, `Origin`, and `Sec-Fetch-Site` on every write including the drawer routes, and rejects source that does not parse.
+- The desk binds `127.0.0.1`, has no CORS, checks `Host`, `Origin`, and `Sec-Fetch-Site` on every write including the drawer routes, and rejects source that does not parse, with the line number in the editor's own numbering.
+- Every request goes through one guard in `scripts/serve.mjs` that answers 500 and keeps serving. A desk you leave running for days does not get to die over one request, and a bare `//`, which any page in the browser can ask for, used to kill it inside `new URL()`. Reads of drawer files are the same: a script that cannot be read is left out of the stack with a warning, never thrown. Do not add a route that reads a file outside `readScript`.
 - `npm run check` packs all three targets in memory, reads each zip back, and validates every manifest and script. Add a line there when you add a promise.
 - License is Business Source License 1.1. Do not relicense as MIT. Do not add analytics. Do not claim the page cannot see you.
 - American English. No em dashes. Warm comments.

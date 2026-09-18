@@ -168,6 +168,11 @@ for (const n of readdirSync(join(root, "agents")).filter((f) => f.endsWith(".js"
 }
 ok(compileError("agent.arm = () => { ok }") === null, "compileError accepts good source");
 ok(typeof compileError("agent.arm = (") === "string", "compileError rejects a syntax error");
+// The number has to be the one the editor is showing, not the wrapper's.
+ok(/\(line 2\)$/.test(compileError("var a = 1;\nvar b = ;\nvar c = 3;")), "a syntax error carries the line it broke on");
+ok(/\(line 4\)$/.test(compileError("\n\n\nvar a = ;")), "blank lines above the code do not shift that number");
+ok(/\(line 3\)$/.test(compileError("agent.arm = function () {\n  var x = 1;\n")), "an unterminated block points at the last line you can see");
+ok(!/\(line/.test(String(compileError([{ name: "a", source: "var x = ;" }]))), "a stack gets no line number, because one file's numbers would be a guess");
 
 console.log("stack");
 // One desk can serve several scripts. They land in one file, so the only honest
@@ -243,6 +248,16 @@ try {
     body: JSON.stringify({ source: "" }),
   });
   ok(crossSite.status === 403, "a cross-site page cannot write to the drawer");
+  // The desk is left running for days. One bad request may not end that. A bare
+  // "//" is the cheap proof: new URL() refuses it, and any page in the browser
+  // could ask for it.
+  const nonsense = await desk("//");
+  ok(nonsense.status === 500, "a request the desk cannot parse is a 500");
+  ok((await desk("/api/drawer")).status === 200, "and the desk is still serving afterward");
+  const icon = await desk("/favicon.png");
+  ok(icon.status === 200 && icon.headers.get("content-type") === "image/png",
+    "the desk has a favicon instead of 404ing at itself");
+
   // fetch refuses to forge a Host header, and a DNS rebind is exactly a forged
   // Host header, so this one goes out over a plain socket.
   const rebound = await new Promise((resolve, reject) => {

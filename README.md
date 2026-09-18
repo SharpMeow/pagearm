@@ -250,7 +250,9 @@ On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.
 
 Leave the desk running while you tinker. Host patterns belong to the browser, not the desk. The list you type on the desk becomes both the content script matches and the `host_permissions`, and the background runs the live agent only on that list, never on the desk page itself. If you add a site, download a fresh zip, unzip over the **same** folder, then reload the extension. Hot-swap cannot invent `host_permissions`. Every browser is stubborn about that, and I am not going to fight all three.
 
-The desk listens on `127.0.0.1` only, refuses saves from any other origin, and rejects a save that does not parse, with the line that broke. Nothing on your Wi-Fi and no site you visit can rewrite your agent.
+The desk listens on `127.0.0.1` only, refuses saves from any other origin, and rejects a save that does not parse, with the line that broke, counted in the editor's own numbering and selected for you. Nothing on your Wi-Fi and no site you visit can rewrite your agent. One request cannot take the desk down either: anything it cannot answer is a 500 and a line in the terminal, and a drawer file it cannot read is left out of the stack rather than thrown.
+
+In the editor, **Tab** indents by two spaces instead of moving the focus. Press **Escape** first if you want Tab to leave.
 
 ---
 

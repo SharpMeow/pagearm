@@ -311,6 +311,7 @@ async function putInDrawer(makeLive) {
     try { data = await r.json(); } catch (e) {}
     if (!r.ok) {
       drawerState.textContent = "not saved: " + (data.error || r.status);
+      showBroken(data.error);
       return;
     }
     bound = name;
@@ -401,6 +402,7 @@ async function save() {
     try { data = await r.json(); } catch (e) {}
     if (!r.ok) {
       saveState.textContent = "not saved: " + (data.error || r.status);
+      showBroken(data.error);
       return;
     }
     stack = data.stack || [];
@@ -412,6 +414,54 @@ async function save() {
     saveState.textContent = "not saved: desk unreachable";
   }
 }
+
+// A syntax error comes back with the line it broke on. Put the cursor there,
+// because hunting for line 34 by eye is the least pleasant part of a typo.
+function showBroken(message) {
+  const m = /\(line (\d+)\)/.exec(String(message || ""));
+  if (!m) return;
+  const line = Number(m[1]);
+  const lines = source.value.split("\n");
+  if (line < 1 || line > lines.length) return;
+  let at = 0;
+  for (let i = 0; i < line - 1; i++) at += lines[i].length + 1;
+  source.focus();
+  source.setSelectionRange(at, at + lines[line - 1].length);
+  try {
+    // Selecting does not always scroll, so put the line near the middle.
+    const step = parseFloat(getComputedStyle(source).lineHeight) || 20;
+    source.scrollTop = Math.max(0, (line - 1) * step - source.clientHeight / 2);
+  } catch (e) {}
+}
+
+// Tab belongs to the code, not to the focus ring. Escape first, then Tab, to
+// leave the editor with the keyboard.
+let tabLeaves = false;
+source.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    tabLeaves = true;
+    return;
+  }
+  if (ev.key !== "Tab") {
+    tabLeaves = false;
+    return;
+  }
+  if (tabLeaves || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey) {
+    tabLeaves = false;
+    return;
+  }
+  ev.preventDefault();
+  const pad = "  ";
+  let typed = false;
+  // execCommand is the deprecated one that keeps undo working, so try it first.
+  try { typed = document.execCommand("insertText", false, pad); } catch (e) {}
+  if (!typed) {
+    const at = source.selectionStart;
+    const end = source.selectionEnd;
+    source.value = source.value.slice(0, at) + pad + source.value.slice(end);
+    source.selectionStart = source.selectionEnd = at + pad.length;
+  }
+});
 
 saveBtn.addEventListener("click", save);
 drawerSaveBtn.addEventListener("click", () => putInDrawer(false));
