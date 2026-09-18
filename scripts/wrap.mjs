@@ -1,5 +1,11 @@
-// Wraps the human's agent in a tiny IIFE so `agent` is always there.
+// Wraps the human's scripts in a tiny IIFE so `agent` is always there.
 // Keep this boring. The interesting part lives in agents/*.js.
+//
+// One desk can serve more than one script. They share one `agent`, one hash,
+// and one toolbar light, and each one gets its own function scope and its own
+// `arm`. Write `agent.arm = fn` the same way whether you are alone up there or
+// third in line. The wrapper collects each arm as its script finishes and calls
+// them in order, so a neighbor that throws does not take the rest down.
 
 const PREFIX = `(function () {
   function pip(state, mark) {
@@ -71,35 +77,78 @@ const PREFIX = `(function () {
       setTimeout(function () { finish(""); }, 2000);
     });
   }
+  function idle() { pip("ok"); }
   var agent = {
     __pa: true,
     origin: window.__PA_ORIGIN || "",
     // A getter, so it follows pushState instead of remembering the first route.
     get match() { return location.hostname + location.pathname; },
     q: q, qa: qa, click: click, punch: punch, type: type, wait: wait, pip: pip, capture: capture,
-    arm: function () { pip("ok"); }
+    arm: idle
   };
   window.__agent = agent;
   window.__pagearm = agent;
-  try {
+  var arms = [];
+  agent.scripts = [];
+  // Run one script's body, then take whatever it left on agent.arm. The reset
+  // before each body means a script always sees the plain default, never the
+  // last script's arm, so nobody composes with a neighbor by accident.
+  function slot(name, body) {
+    agent.scripts.push(name);
+    agent.arm = idle;
+    try {
+      body();
+    } catch (err) {
+      pip("err");
+      console.warn("[pagearm] " + name, err);
+    }
+    if (agent.arm !== idle && typeof agent.arm === "function") arms.push([name, agent.arm]);
+    agent.arm = idle;
+  }
+  // Called on inject and again on every same-hash navigation. One script that
+  // throws is one warning with its name on it, not a dead stack.
+  function armAll() {
+    if (!arms.length) {
+      pip("ok");
+      return;
+    }
+    for (var i = 0; i < arms.length; i++) {
+      try {
+        arms[i][1]();
+      } catch (err) {
+        pip("err");
+        console.warn("[pagearm] " + arms[i][0], err);
+      }
+    }
+  }
 `;
 
-const SUFFIX = `
-  } catch (err) {
-    pip("err");
-    console.warn("[pagearm]", err);
-  }
-  try {
-    if (typeof agent.arm === "function") agent.arm();
-  } catch (err2) {
-    pip("err");
-    console.warn("[pagearm]", err2);
-  }
+const SUFFIX = `  agent.arm = armAll;
+  armAll();
 })();
 `;
 
+// One source, a list of sources, or a list of { name, source }. The desk hands
+// over the second shape; pack.mjs and anything older hand over the first.
+function slots(source) {
+  const list = Array.isArray(source) ? source : [source];
+  return list
+    .map((item, i) => {
+      if (item && typeof item === "object") {
+        return { name: String(item.name || "script " + (i + 1)), source: String(item.source || "") };
+      }
+      return { name: list.length > 1 ? "script " + (i + 1) : "agent", source: String(item || "") };
+    })
+    .filter((s) => s.source.trim());
+}
+
 export function wrapAgent(source) {
-  return PREFIX + "\n" + String(source || "").trim() + "\n" + SUFFIX;
+  const parts = slots(source);
+  // Nothing to run is still a valid agent. It arms, it pips, it waits for you.
+  const body = parts
+    .map((s) => "  slot(" + JSON.stringify(s.name) + ", function () {\n" + s.source.trim() + "\n  });\n")
+    .join("");
+  return PREFIX + body + SUFFIX;
 }
 
 // The packed copy steps aside when a live version is already in the frame, so a

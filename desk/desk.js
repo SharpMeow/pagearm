@@ -13,11 +13,14 @@ const drawerState = document.getElementById("drawer-state");
 const drawerSaveBtn = document.getElementById("drawer-save");
 const drawerLiveBtn = document.getElementById("drawer-live");
 const drawerDeleteBtn = document.getElementById("drawer-delete");
+const stackListEl = document.getElementById("stack-list");
+const drawerCountEl = document.getElementById("drawer-count");
 
-// Two names, and they are not the same thing. `bound` is the drawer script the
-// editor is holding. `live` is the one the browser is actually running.
+// Two different things. `bound` is the drawer script the editor is holding.
+// `stack` is the ordered list the browser is actually running, which is usually
+// one name and occasionally a few.
 let bound = null;
-let live = null;
+let stack = [];
 
 // Same shell everywhere. The manifest and the install ritual differ, so the
 // desk hands over the zip for the browser you say you are using.
@@ -111,44 +114,165 @@ async function load() {
   const r = await fetch("/api/agent");
   const data = await r.json();
   source.value = data.source || "";
-  live = data.live || null;
-  bound = live;
-  if (live) drawerNameEl.value = live;
+  stack = data.stack || [];
+  bound = data.bound || null;
+  if (bound) drawerNameEl.value = bound;
 }
 
 function askedName() {
   return (drawerNameEl.value || bound || "").trim().toLowerCase();
 }
 
+function pretty(name) {
+  return name.replace(/-/g, " ");
+}
+
+// A chip is one script: the name opens it in the editor, the ticks act on it.
+function chip(parent, name, opts) {
+  const pair = document.createElement("span");
+  // Three states worth seeing at a glance: in the drawer, running, and the one
+  // the editor is holding right now.
+  pair.className = "pair" + (opts.live ? " live" : "") + (name === bound ? " editing" : "");
+  if (opts.index) {
+    const idx = document.createElement("span");
+    idx.className = "idx";
+    idx.textContent = String(opts.index);
+    pair.appendChild(idx);
+  }
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "open";
+  open.dataset.name = name;
+  open.textContent = pretty(name);
+  open.title = opts.title || "open in the editor";
+  open.setAttribute("aria-pressed", name === bound ? "true" : "false");
+  open.addEventListener("click", () => openFromDrawer(name));
+  pair.appendChild(open);
+  (opts.ticks || []).forEach((t) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tick";
+    b.textContent = t.glyph;
+    b.title = t.title;
+    b.setAttribute("aria-label", t.title + ": " + name);
+    b.addEventListener("click", t.onClick);
+    pair.appendChild(b);
+  });
+  parent.appendChild(pair);
+}
+
+function drop(name) {
+  return () => saveStack(stack.filter((n) => n !== name), pretty(name) + " is out of the agent.");
+}
+
+function renderStack() {
+  stackListEl.innerHTML = "";
+  if (!stack.length) {
+    const empty = document.createElement("span");
+    empty.className = "empty";
+    empty.textContent = "nothing yet, so the agent is whatever is in the editor above";
+    stackListEl.appendChild(empty);
+    return;
+  }
+  stack.forEach((name, i) => {
+    const ticks = [];
+    // Order matters, so the only move you need is "earlier". Repeat it and the
+    // script walks to the front.
+    if (i > 0) {
+      ticks.push({
+        glyph: "\u2191",
+        title: "run earlier",
+        onClick: () => {
+          const next = stack.slice();
+          next[i - 1] = stack[i];
+          next[i] = stack[i - 1];
+          saveStack(next, pretty(name) + " runs earlier now.");
+        },
+      });
+    }
+    ticks.push({ glyph: "\u00d7", title: "take out of the agent", onClick: drop(name) });
+    chip(stackListEl, name, { live: true, index: i + 1, ticks, title: "open in the editor" });
+  });
+}
+
 function renderDrawer(scripts) {
   drawerListEl.innerHTML = "";
+  drawerCountEl.textContent = scripts.length
+    ? scripts.length + (scripts.length === 1 ? " script" : " scripts") + ", " + stack.length + " running"
+    : "";
   if (!scripts.length) {
     const empty = document.createElement("span");
-    empty.className = "muted";
-    empty.textContent = "empty";
+    empty.className = "empty";
+    empty.textContent = "empty. Name what is in the editor and save it here.";
     drawerListEl.appendChild(empty);
     return;
   }
   scripts.forEach((s) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.dataset.name = s.name;
-    b.textContent = s.name.replace(/-/g, " ");
-    b.setAttribute("aria-pressed", s.name === bound ? "true" : "false");
-    if (s.name === live) {
-      b.classList.add("live");
-      b.title = "this one is the agent";
-    }
-    b.addEventListener("click", () => openFromDrawer(s.name));
-    drawerListEl.appendChild(b);
+    const running = stack.includes(s.name);
+    chip(drawerListEl, s.name, {
+      live: running,
+      title: running ? "running. Click to open it in the editor" : "open in the editor",
+      ticks: [
+        running
+          ? { glyph: "\u2212", title: "take out of the agent", onClick: drop(s.name) }
+          : {
+              glyph: "+",
+              title: "add to the agent",
+              onClick: () => saveStack(stack.concat([s.name]), pretty(s.name) + " runs too now. Open or reload a tab."),
+            },
+      ],
+    });
   });
+}
+
+// The last shelf the desk was told about. Held so a render that only knows the
+// stack changed still redraws the drawer's dots and its count.
+let shelf = [];
+
+function renderAll(scripts) {
+  if (scripts) shelf = scripts;
+  renderStack();
+  renderDrawer(shelf);
 }
 
 async function loadDrawer() {
   const r = await fetch("/api/drawer");
   const data = await r.json();
-  live = data.live || null;
-  renderDrawer(data.scripts || []);
+  stack = data.stack || [];
+  renderAll(data.scripts || []);
+}
+
+// One place writes the stack, so the desk and the desk's story about itself
+// cannot disagree.
+async function saveStack(names, note) {
+  drawerState.textContent = "arming…";
+  try {
+    const r = await fetch("/api/stack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names }),
+    });
+    let data = {};
+    try { data = await r.json(); } catch (e) {}
+    if (!r.ok) {
+      drawerState.textContent = "not changed: " + (data.error || r.status);
+      await loadDrawer().catch(() => {});
+      return;
+    }
+    stack = data.stack || [];
+    renderAll(data.scripts);
+    drawerState.textContent = note || "the agent changed. Open or reload a tab.";
+    saveState.textContent = "";
+  } catch (e) {
+    drawerState.textContent = "desk unreachable";
+  }
+}
+
+function stackNote(name) {
+  const at = stack.indexOf(name);
+  if (at < 0) return pretty(name) + " is open. It is not part of the agent yet.";
+  if (stack.length === 1) return pretty(name) + " is open, and it is the agent.";
+  return pretty(name) + " is open. It runs " + (at + 1) + " of " + stack.length + ".";
 }
 
 async function openFromDrawer(name) {
@@ -161,16 +285,14 @@ async function openFromDrawer(name) {
   source.value = data.source || "";
   bound = name;
   drawerNameEl.value = name;
-  drawerState.textContent = name === live
-    ? name + " is open, and it is the agent."
-    : name + " is open. Make it the agent to hot-swap it in.";
+  drawerState.textContent = stackNote(name);
   saveState.textContent = "";
   await loadDrawer().catch(() => {});
 }
 
-// Save the editor under a drawer name, then optionally make that one the agent.
-// Doing both in that order means the thing that goes live is what you are
-// looking at, not whatever the file held before you started typing.
+// Save the editor under a drawer name, then optionally make that one the whole
+// agent. Doing both in that order means the thing that goes live is what you
+// are looking at, not whatever the file held before you started typing.
 async function putInDrawer(makeLive) {
   const name = askedName();
   if (!name) {
@@ -193,12 +315,12 @@ async function putInDrawer(makeLive) {
     }
     bound = name;
     drawerNameEl.value = name;
-    live = data.live || null;
+    stack = data.stack || [];
     if (!makeLive) {
       drawerState.textContent = data.armed
-        ? "saved to " + name + ", which is the agent. Open or reload a tab."
-        : "saved to " + name + ". Not the agent yet.";
-      renderDrawer(data.scripts || []);
+        ? "saved to " + name + ", which the agent is running. Open or reload a tab."
+        : "saved to " + name + ". Not part of the agent yet.";
+      renderAll(data.scripts);
       return;
     }
     const p = await fetch("/api/drawer/" + encodeURIComponent(name) + "/live", { method: "POST" });
@@ -209,8 +331,8 @@ async function putInDrawer(makeLive) {
       await loadDrawer().catch(() => {});
       return;
     }
-    live = out.live || name;
-    drawerState.textContent = name + " is the agent now. Open or reload a tab.";
+    stack = out.stack || [name];
+    drawerState.textContent = name + " is the agent now, on its own. Open or reload a tab.";
     saveState.textContent = "";
     await loadDrawer().catch(() => {});
   } catch (e) {
@@ -233,13 +355,14 @@ async function removeFromDrawer() {
       drawerState.textContent = "not deleted: " + (data.error || r.status);
       return;
     }
+    const wasRunning = stack.includes(name);
     if (bound === name) bound = null;
-    live = data.live || null;
+    stack = data.stack || [];
     drawerNameEl.value = "";
-    renderDrawer(data.scripts || []);
-    drawerState.textContent = name === live
-      ? name + " is gone."
-      : name + " is gone. Whatever was armed keeps running until you save another one.";
+    renderAll(data.scripts);
+    drawerState.textContent = wasRunning
+      ? name + " is gone, and out of the agent. Tabs keep the old copy until the next navigation."
+      : name + " is gone.";
   } catch (e) {
     drawerState.textContent = "desk unreachable";
   }
@@ -259,7 +382,6 @@ async function loadExamples() {
       bound = null;
       drawerNameEl.value = ex.id;
       drawerState.textContent = "example loaded. Save it to the drawer to keep it.";
-      renderDrawer([]);
       loadDrawer().catch(() => {});
       saveState.textContent = "unsaved example";
     });
@@ -281,7 +403,7 @@ async function save() {
       saveState.textContent = "not saved: " + (data.error || r.status);
       return;
     }
-    live = data.live || null;
+    stack = data.stack || [];
     saveState.textContent = bound
       ? "saved to " + bound + " and armed. open or reload a tab."
       : "saved. open or reload a tab.";

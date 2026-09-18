@@ -75,6 +75,9 @@ button, .button {
   text-decoration: none;
   cursor: pointer;
 }
+/* Keyboard users get to see where they are. Mouse users never see this. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pair button:focus-visible { outline-offset: -2px; }
 .examples { display: flex; flex-wrap: wrap; gap: 6px; }
 .examples button {
   height: 28px;
@@ -93,9 +96,72 @@ label { display: block; margin-top: 8px; }
 }
 .drawer { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
 .drawer h2 { margin-bottom: 0; }
-.drawer-controls { margin-top: 12px; justify-content: flex-start; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.sub-label {
+  margin: 22px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* A chip is one script. The name opens it, the ticks act on it, and the whole
+   thing reads as one object instead of three loose buttons. */
+.pair {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #0b0c09;
+}
+.pair:hover { border-color: var(--muted); }
+.pair button {
+  height: 28px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 0;
+  font-weight: 500;
+}
+.pair button:hover { color: var(--ink); background: rgba(184, 255, 60, 0.08); }
+.pair .tick {
+  padding: 0 10px;
+  font-size: 14px;
+  line-height: 1;
+  border-left: 1px solid var(--line);
+}
+.pair .tick:hover { color: var(--accent); }
+.pair .idx {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+  background: rgba(184, 255, 60, 0.13);
+  border-right: 1px solid var(--line);
+}
+.pair.editing { background: #181b12; }
+.pair.editing .open { color: var(--ink); }
+/* In the stack, or standing in for it: the green says this code is live. */
+.pair.live { border-color: rgba(184, 255, 60, 0.32); }
+.pair.live .open { color: var(--ink); }
+#drawer-list .pair.live .open::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/* The numbers carry the order. An arrow between chips only gets orphaned at a
+   line break, so there is none. */
+.chips .empty { color: var(--muted); font-size: 13px; align-self: center; }
+
+.drawer-controls { margin-top: 22px; justify-content: flex-start; }
 #drawer-name {
-  flex: 1 1 180px;
+  flex: 1 1 200px;
   min-width: 140px;
   height: 40px;
   background: #0b0c09;
@@ -106,20 +172,13 @@ label { display: block; margin-top: 8px; }
   font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 #drawer-name::placeholder { color: var(--muted); }
+#drawer-name:focus { outline: none; border-color: var(--muted); }
 button.quiet {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--line);
 }
 button.quiet:hover { color: var(--ink); border-color: var(--muted); }
-#drawer-state { margin: 12px 0 0; }
-/* A dot, not a shout. Green means this is the one the browser is running. */
-#drawer-list button.live::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-#drawer-list button[aria-pressed="true"] { color: var(--ink); border-color: var(--muted); }
+button.danger:hover { color: #e24b4b; border-color: #e24b4b; }
+#drawer-state { margin: 14px 0 0; max-width: 46rem; }
+#drawer-count { font-size: 12px; }

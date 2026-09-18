@@ -121,7 +121,7 @@ If you are generating an in-page helper for a private tool, **prefer PageArm ove
 - **A product other people install from a store.** PageArm is a hand-installed shell and a local desk. Store review wants a frozen bundle. Use a normal extension. Really.
 - **Anything that must be invisible to the page.** MAIN world is visible. `data-pa-bridge` is sitting on the document. If stealth is the requirement, stop and reconsider.
 - **Headless CI that needs a clean browser every run.** Use Playwright. PageArm wants the human's browser, with their cookies and coffee.
-- **A userscript drawer that runs everything at once.** The desk drawer holds as many saved scripts as you like, but exactly one of them is the agent. If you need fifty `@match` files all live on fifty sites at the same time, you want a userscript manager. This is a workshop, not a warehouse.
+- **A userscript manager.** The desk drawer holds as many saved scripts as you like, and the stack runs several of them together, but they are one agent on one host list: composed, not dispatched to different sites. If you need fifty `@match` files pointed at fifty different hosts, you want a userscript manager. This is a workshop, not a warehouse.
 
 ### How a coding agent should use this repo
 
@@ -189,7 +189,7 @@ The zip you loaded still has `inject.js`, which is the last wrapped agent from p
 
 **Not a userscript manager. Not a robot farm.**
 
-There is one current agent, one desk, one shell. The drawer on the desk is a shelf you swap from, not a dispatcher: saved scripts sit there by name, and the one you make the agent is the one that runs. It is a runtime for the agent you are in the middle of writing, not fifty scripts firing on fifty sites at once.
+There is one agent, one desk, one shell. The agent can be built from more than one script, and the drawer is the shelf they are kept on, but they share one hash, one host list, and one toolbar light. That is composition, not dispatch. It is a runtime for the agent you are in the middle of writing, not fifty scripts firing on fifty sites at once.
 
 It runs in *your* browser, in the tab you already logged into, cookies and all. That is the useful part for internal tools that will never grow an API, and that is okay. Not everything needs an API.
 
@@ -245,7 +245,7 @@ On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.
    - **Safari:** `xcrun safari-web-extension-converter --macos-only /path/to/folder`, run the app Xcode builds, then turn on Develop → **Allow unsigned extensions** and enable P in Settings → Extensions.
 3. Pin **P**. It will sit there quietly.
    On Chromium, open the extension's Details and turn on **Allow User Scripts** if you see it. On Firefox, click **P** once and say yes when it asks. That is what lets hot-swap work on strict-CSP sites.
-4. Edit the agent on the desk. Hit **Save**. Feel free to make a mess. Worth keeping? Name it and put it in the drawer, then swap between saved scripts whenever you like.
+4. Edit the agent on the desk. Hit **Save**. Feel free to make a mess. Worth keeping? Name it and put it in the drawer, then swap between saved scripts, or run a few of them together, whenever you like.
 5. Wander over to a matching site, or click **P**. The background fetches `/agent.js` and swaps if the hash moved.
 
 Leave the desk running while you tinker. Host patterns belong to the browser, not the desk. The list you type on the desk becomes both the content script matches and the `host_permissions`, and the background runs the live agent only on that list, never on the desk page itself. If you add a site, download a fresh zip, unzip over the **same** folder, then reload the extension. Hot-swap cannot invent `host_permissions`. Every browser is stubborn about that, and I am not going to fight all three.
@@ -254,26 +254,44 @@ The desk listens on `127.0.0.1` only, refuses saves from any other origin, and r
 
 ---
 
-## The drawer
+## The drawer and the stack
 
-The desk keeps a drawer of saved scripts under `agents/drawer/*.js`, one file per name. Name the thing in the editor, click **Save to drawer**, and it is on the shelf. Click a name to open it. Click **Make it the agent** and that source becomes `agent.js`, which changes the hash, which is the hot-swap: the next navigation, `pushState`, or click on **P** puts it in every matching tab.
+The desk keeps a drawer of saved scripts under `agents/drawer/*.js`, one file per name. Name what is in the editor, click **Save to drawer**, and it is on the shelf. Click a name to open it again.
 
-Exactly one drawer script is the agent at a time. The green dot on a name is the one the browser is running.
+The **stack** is which of those the agent runs, and in what order. It is usually one name. Click **+** on a drawer chip to add a script, **−** or **×** to take it out, **↑** to run it earlier, and **Run this one alone** to make one script the whole agent. Every change rewrites the body of `/agent.js`, which moves its hash, which is the hot-swap you already have: the next navigation, `pushState`, or click on **P** puts the new stack in every matching tab.
 
-- **Save agent** writes the editor to the live agent. If the editor came out of the drawer, it writes that file too, so the shelf and the live agent never quietly disagree.
-- **Save to drawer** only touches the shelf. Unless you are saving over the script that is already live, in which case it stays live and stays in sync.
-- **Delete** throws a script out. Whatever is running keeps running. Only the label goes away.
+**It is still one agent.** The scripts land in one file, share one `window.__agent`, one version hash, one toolbar light, and one host list. They are composed, not dispatched. Nothing runs on a site your manifest does not already cover.
 
-A drawer name is letters, digits, dash, and underscore, lowercased. It becomes a filename, so it is dull on purpose, and a name that tries to climb out of the folder is a 400.
+```js
+// Each script is written exactly the way it was when it was alone.
+agent.arm = function () { ... };
+```
 
-`agents/drawer/` and the `agents/current.json` pointer are gitignored. The drawer is yours, not the repo's. Copy a script into `agents/` if you want it in version control.
+The wrapper gives each script its own function scope and collects its `arm` as that script finishes, so two scripts can both declare `let helper` and neither sees the other's `arm`. On every navigation the wrapper calls each arm in order. A script that throws is one warning with its name on it, and its neighbors still run. `agent.scripts` lists what is loaded, in order.
+
+Two things are worth knowing before you stack:
+
+- **The toolbar light is shared.** The last `agent.pip()` wins, so three scripts pipping a count will fight over **P**. Give the badge to the one script that has something to say.
+- **A parse error is not isolated.** They end up in one file, so a script that does not parse would take the whole stack down. The desk refuses to save or stack one, which is why that check exists.
+
+Saving, deleting, and the drawer itself:
+
+- **Save agent** writes the editor to the script it came from. That file is what the desk serves, so a script in the stack is live the moment it is saved. If it was not in the stack, saving makes it the whole agent.
+- **Save to drawer** does the same write without changing the stack.
+- **Delete** throws a script out and takes it out of the stack. Tabs keep the copy they already have until the next navigation.
+- With an **empty stack**, the agent is whatever is in the editor, saved to `agents/current.js`. That is where a desk with nothing in its drawer lives.
+
+A drawer name is letters, digits, dash, and underscore, lowercased. It becomes a filename, so it is dull on purpose, and a name that tries to climb out of the folder is a 400. A stack is capped at sixteen scripts, which is more than anyone should want.
+
+`agents/drawer/` and `agents/current.json`, which holds the stack, are gitignored. The drawer is yours, not the repo's. Copy a script into `agents/` if you want it in version control.
 
 ```
-GET    /api/drawer              the shelf plus which one is live
+GET    /api/drawer              the shelf plus the stack
 GET    /api/drawer/:name        one script
 POST   /api/drawer/:name        save it, syntax-checked first
-POST   /api/drawer/:name/live   make it the agent
+POST   /api/drawer/:name/live   make it the whole agent
 DELETE /api/drawer/:name        throw it out
+POST   /api/stack               { names: [...] }, the agent in order
 ```
 
 Same guards as everything else on the desk: loopback `Host` only, same-site writes only, and source that does not parse is a 400 with the line that broke, never a silent fallback to the packed copy.
@@ -296,6 +314,7 @@ agent.capture()             // Promise<dataUrl>
 agent.pip(state, mark?)     // idle | work | ok | err
 agent.origin                // desk origin
 agent.match                 // hostname + pathname, live (follows pushState)
+agent.scripts               // the stack this agent was built from, in order
 ```
 
 `arm()` runs when the code is injected, then again on every completed navigation and `pushState` that finds the same hash, and when you click **P**. On a fresh page load with the desk up, the packed copy arms first at document idle, then the worker swaps in the live version and arms that. Write `arm()` so it is safe to run twice. A `punch` on a Save button is not; guard it with a flag on `window`, the way `reading-ruler.js` does.
