@@ -795,8 +795,8 @@ async function handle(req, res) {
         return;
       }
       const rec = !!body.recording;
+      if (rec && !lookState.recording) lookState.steps = [];
       lookState.recording = rec;
-      if (rec) lookState.steps = [];
       send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
       return;
     }
@@ -804,14 +804,20 @@ async function handle(req, res) {
       send(res, 403, "only the shell may record");
       return;
     }
-    if (!lookState.recording) {
-      send(res, 200, JSON.stringify({ ok: true, ignored: true }), "application/json; charset=utf-8");
-      return;
-    }
     const kind = body.kind === "type" ? "type" : "punch";
     const sel = clamp(body.sel, 200);
     if (!sel) {
       send(res, 400, "need a selector");
+      return;
+    }
+    if (!lookState.recording) {
+      const last = lookState.steps[lookState.steps.length - 1];
+      if (kind === "type" && last && last.kind === "type" && last.sel === sel) {
+        last.text = clamp(body.text, 500);
+        send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+        return;
+      }
+      send(res, 200, JSON.stringify({ ok: true, ignored: true }), "application/json; charset=utf-8");
       return;
     }
     if (kind === "type") {

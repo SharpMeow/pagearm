@@ -697,6 +697,7 @@ async function healAgent() {
 }
 
 async function setLook(recording) {
+  if (recording && lookRecordBtn.getAttribute("aria-pressed") === "true") return;
   try {
     const r = await fetch("/api/look", {
       method: "POST",
