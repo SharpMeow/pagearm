@@ -8,9 +8,18 @@ export function compileLook(steps) {
     const raw = list[i] || {};
     const sel = String(raw.sel || raw.selector || "").trim();
     if (!sel) continue;
-    const kind = raw.kind === "type" || raw.action === "type" || raw.type === "input" ? "type" : "punch";
+    const kind = raw.kind === "type" || raw.action === "type" || raw.type === "input"
+      ? "type"
+      : raw.kind === "seen"
+        ? "seen"
+        : "punch";
     const text = String(raw.text || raw.value || "");
     const prev = compact[compact.length - 1];
+    if (kind === "seen") {
+      if (prev && prev.kind === "seen" && prev.sel === sel) continue;
+      compact.push({ kind: "seen", sel: sel });
+      continue;
+    }
     if (kind === "type") {
       if (prev && prev.kind === "punch" && prev.sel === sel) compact.pop();
       const last = compact[compact.length - 1];
@@ -31,19 +40,27 @@ export function compileLook(steps) {
 
   const lines = ["agent.arm = async () => {", "  agent.pip(\"work\");"];
   let lastPunch = "";
+  let lastSeen = "";
   for (let i = 0; i < compact.length; i++) {
     const step = compact[i];
+    if (step.kind === "seen") {
+      lastSeen = step.sel;
+      continue;
+    }
     if (step.kind === "type") {
       lines.push("  agent.type(agent.q(" + JSON.stringify(step.sel) + "), " + JSON.stringify(step.text) + ");");
       continue;
     }
-    if (i > 0 && compact[i - 1].kind === "type") lines.push("  await agent.wait(80);");
+    var j = i - 1;
+    while (j >= 0 && compact[j].kind === "seen") j--;
+    if (j >= 0 && compact[j].kind === "type") lines.push("  await agent.wait(80);");
     lines.push("  agent.punch(agent.q(" + JSON.stringify(step.sel) + "));");
     lastPunch = step.sel;
   }
-  if (lastPunch) {
-    const note = lastPunch.charAt(0) === "#" ? lastPunch.slice(1) : lastPunch;
-    lines.push("  agent.must(" + JSON.stringify(lastPunch) + ", " + JSON.stringify(note) + ");");
+  const mustSel = (lastSeen && lastSeen !== lastPunch) ? lastSeen : lastPunch;
+  if (mustSel) {
+    const note = mustSel.charAt(0) === "#" ? mustSel.slice(1) : mustSel;
+    lines.push("  agent.must(" + JSON.stringify(mustSel) + ", " + JSON.stringify(note) + ");");
   } else {
     for (let i = compact.length - 1; i >= 0; i--) {
       if (compact[i].kind !== "type") continue;

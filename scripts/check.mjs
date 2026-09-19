@@ -170,6 +170,8 @@ ok(/ORIGIN \+ "\/api\/look"/.test(shell) && /tabs\.sendMessage/.test(shell), "lo
 ok(/function pickTarget/.test(bridgeSrc), "look walks composedPath to the control, not a span inside it");
 ok(/type === "checkbox"/.test(bridgeSrc) && /type === "radio"/.test(bridgeSrc), "look does not type into a checkbox");
 ok(/flushType\(\);/.test(bridgeSrc), "look flushes typing before a punch, so Save does not drop the last letters");
+ok(/kind: "seen"/.test(bridgeSrc) && /noteAppeared/.test(bridgeSrc), "look watches what appeared after a punch");
+ok(/aria-label/.test(bridgeSrc) && /data-testid/.test(bridgeSrc), "look prefers aria-label and data-testid over nth-of-type");
 ok(/function sketch/.test(bridgeSrc), "look also sketches the controls so Write can see the live tab");
 ok(!/data-pa-bridge/.test(bridgeSrc), "the bridge does not hang a name tag on the document");
 ok(/text\/plain/.test(shell), "posted as text/plain, so no browser stops for a preflight the desk cannot answer");
@@ -349,8 +351,17 @@ const looked = compileLook([
 ok(looked.indexOf('agent.type(agent.q("#vessel"), "Mackerel Queen")') >= 0, "look keeps the last value typed into a field");
 ok(looked.indexOf('agent.punch(agent.q("#vessel"))') < 0, "and drops the punch that was just focusing that field");
 ok(/await agent\.wait\(80\)/.test(looked), "a punch after typing waits a tick, the way React wants");
-ok(looked.indexOf('agent.must("#save-claim"') >= 0, "the last punch is a must, so prove has something to score");
+ok(looked.indexOf('agent.must("#save-claim"') >= 0, "without a seen node, the last punch is a must");
 ok((looked.match(/punch\(agent\.q\("#save-claim"\)\)/g) || []).length === 1, "a double punch on Save is one punch");
+const sawReceipt = compileLook([
+  { kind: "type", sel: "#vessel", text: "Mackerel Queen" },
+  { kind: "punch", sel: "#save-claim" },
+  { kind: "seen", sel: "#receipt" },
+]);
+ok(sawReceipt.indexOf('agent.must("#receipt"') >= 0, "a node that appeared after the punch is the must");
+ok(sawReceipt.indexOf('agent.must("#save-claim"') < 0, "and the button you punched is not");
+ok(/punch\(agent\.q\("#save-claim"\)\)/.test(sawReceipt), "the punch itself is still there");
+ok(!/kind === "seen"/.test(sawReceipt) && !/agent\.seen/.test(sawReceipt), "seen is not an agent call");
 parses(wrapAgent(looked), "wrapped a compiled look");
 ok(/agent\.pip\("ok"\)/.test(compileLook([])), "an empty look still pips, the way a quiet agent always did");
 const typedOnly = compileLook([{ kind: "type", sel: "#vessel", text: "Mackerel Queen" }]);
@@ -559,6 +570,13 @@ try {
   await desk("/api/look", {
     method: "POST",
     headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ kind: "seen", sel: "#receipt" }),
+  });
+  const withSeen = await (await desk("/api/look")).json();
+  ok(withSeen.steps.some((s) => s.kind === "seen" && s.sel === "#receipt"), "the shell may record a node that appeared after a punch");
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
     body: JSON.stringify({
       kind: "sketch",
       nodes: [{ sel: "#vessel", tag: "input", name: "vessel", text: "" }, { sel: "#save-claim", tag: "button", name: "", text: "Save claim" }],
@@ -581,7 +599,7 @@ try {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ recording: true }),
   });
-  ok((await (await desk("/api/look")).json()).steps.length === 2, "Record twice does not wipe a take that is already rolling");
+  ok((await (await desk("/api/look")).json()).steps.length >= 3, "Record twice does not wipe a take that is already rolling");
   const compiled = await desk("/api/look/compile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

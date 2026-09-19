@@ -67,6 +67,8 @@ window.addEventListener("message", function (ev) {
 var looking = false;
 var typeTimer = 0;
 var typePending = null;
+var appearTimer = 0;
+var knownVisible = {};
 
 function esc(s) {
   try {
@@ -86,8 +88,24 @@ function parentOf(el) {
 function cssPath(el) {
   if (!el || !el.tagName) return "";
   if (el.id) return "#" + esc(el.id);
-  var name = el.getAttribute && el.getAttribute("name");
-  if (name) return el.tagName.toLowerCase() + '[name="' + esc(name) + '"]';
+  var tag = el.tagName.toLowerCase();
+  function attr(name) {
+    var v = "";
+    try { v = (el.getAttribute && el.getAttribute(name)) || ""; } catch (eA) {}
+    return v;
+  }
+  var name = attr("name");
+  if (name) return tag + '[name="' + esc(name) + '"]';
+  var aria = attr("aria-label");
+  if (aria) return tag + '[aria-label="' + esc(aria) + '"]';
+  var testid = attr("data-testid");
+  if (testid) return tag + '[data-testid="' + esc(testid) + '"]';
+  var dataTest = attr("data-test");
+  if (dataTest) return tag + '[data-test="' + esc(dataTest) + '"]';
+  var dataId = attr("data-id");
+  if (dataId) return tag + '[data-id="' + esc(dataId) + '"]';
+  var placeholder = attr("placeholder");
+  if (placeholder) return tag + '[placeholder="' + esc(placeholder) + '"]';
   var parts = [];
   var node = el;
   for (var depth = 0; node && node.tagName && depth < 6; depth++) {
@@ -95,9 +113,9 @@ function cssPath(el) {
       parts.unshift("#" + esc(node.id));
       break;
     }
-    var tag = node.tagName.toLowerCase();
+    var partTag = node.tagName.toLowerCase();
     var parent = parentOf(node);
-    var part = tag;
+    var part = partTag;
     if (parent && parent.children) {
       var kids = parent.children;
       var count = 0;
@@ -166,6 +184,55 @@ function onPointer(ev) {
   var sel = cssPath(el);
   if (!sel) return;
   send({ type: "look", kind: "punch", sel: sel });
+  if (appearTimer) clearTimeout(appearTimer);
+  appearTimer = setTimeout(function () {
+    appearTimer = 0;
+    if (looking) noteAppeared(sel);
+  }, 160);
+}
+
+function isHidden(el) {
+  if (!el) return true;
+  try { if (el.hidden) return true; } catch (eH) {}
+  try {
+    if (el.style && el.style.display === "none") return true;
+  } catch (eS) {}
+  return false;
+}
+
+function collectVisible(into) {
+  function walk(root) {
+    if (!root || !root.querySelectorAll) return;
+    var list = [];
+    try { list = root.querySelectorAll("[id], [role=status], [role=alert]"); } catch (e) {}
+    for (var i = 0; i < list.length; i++) {
+      if (isHidden(list[i])) continue;
+      var sel = cssPath(list[i]);
+      if (sel) into[sel] = 1;
+    }
+    var all = [];
+    try { all = root.querySelectorAll("*"); } catch (e2) {}
+    for (var j = 0; j < all.length; j++) {
+      if (all[j].shadowRoot) walk(all[j].shadowRoot);
+    }
+  }
+  walk(document);
+}
+
+function noteAppeared(except) {
+  var now = {};
+  collectVisible(now);
+  var found = [];
+  for (var sel in now) {
+    if (!Object.prototype.hasOwnProperty.call(now, sel)) continue;
+    if (knownVisible[sel]) continue;
+    if (except && sel === except) continue;
+    found.push(sel);
+  }
+  knownVisible = now;
+  for (var k = 0; k < found.length && k < 8; k++) {
+    send({ type: "look", kind: "seen", sel: found[k] });
+  }
 }
 
 function flushType() {
@@ -229,6 +296,8 @@ function sendSketch() {
 function startLook() {
   if (looking) return;
   looking = true;
+  knownVisible = {};
+  collectVisible(knownVisible);
   document.addEventListener("pointerdown", onPointer, true);
   document.addEventListener("input", onInput, true);
   document.addEventListener("change", onInput, true);
@@ -242,6 +311,11 @@ function stopLook() {
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("change", onInput, true);
   if (typeTimer) clearTimeout(typeTimer);
+  if (appearTimer) {
+    clearTimeout(appearTimer);
+    appearTimer = 0;
+    noteAppeared("");
+  }
   flushType();
   sendSketch();
 }

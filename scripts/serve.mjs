@@ -1003,7 +1003,7 @@ async function handle(req, res) {
       send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
       return;
     }
-    const kind = body.kind === "type" ? "type" : "punch";
+    const kind = body.kind === "type" ? "type" : body.kind === "seen" ? "seen" : "punch";
     const sel = clamp(body.sel, 200);
     if (!sel) {
       send(res, 400, "need a selector");
@@ -1016,6 +1016,14 @@ async function handle(req, res) {
         send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
         return;
       }
+      if (kind === "seen" && last && (last.kind === "punch" || last.kind === "seen")) {
+        if (!(last.kind === "seen" && last.sel === sel)) {
+          lookState.steps.push({ kind: "seen", sel, text: "" });
+          lookState.steps = lookState.steps.slice(-MAX_LOOK);
+        }
+        send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+        return;
+      }
       send(res, 200, JSON.stringify({ ok: true, ignored: true }), "application/json; charset=utf-8");
       return;
     }
@@ -1023,6 +1031,13 @@ async function handle(req, res) {
       const last = lookState.steps[lookState.steps.length - 1];
       if (last && last.kind === "type" && last.sel === sel) {
         last.text = clamp(body.text, 500);
+        send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+        return;
+      }
+    }
+    if (kind === "seen") {
+      const last = lookState.steps[lookState.steps.length - 1];
+      if (last && last.kind === "seen" && last.sel === sel) {
         send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
         return;
       }

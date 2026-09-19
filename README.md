@@ -259,7 +259,7 @@ On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.
    - **Safari:** `xcrun safari-web-extension-converter --macos-only /path/to/folder`, run the app Xcode builds, then turn on Develop → **Allow unsigned extensions** and enable P in Settings → Extensions.
 3. Pin **P**. It will sit there quietly.
    On Chromium, open the extension's Details and turn on **Allow User Scripts** if you see it. On Firefox, click **P** once and say yes when it asks. That is what lets hot-swap work on strict-CSP sites.
-4. Edit the agent on the desk. **Save** arms the next matching tab. **Look** records the tab you click **P** on: use the page, **Stop**, **Compile**, **Save**. **Enhance** writes three drafts and a critic merge; **Write** / **Prove** / **Heal** are lighter. Sample-page prove only. Enhance and Write need `XAI_API_KEY`, unless you already Looked and just want the compiled trace. Worth keeping? Name it and put it in the drawer.
+4. Edit the agent on the desk. **Save** arms the next matching tab and the desk watches its `must`. **Look** records the tab you click **P** on: use the page, **Stop**, **Compile**, **Save**. **Enhance** writes three drafts and a critic merge; **Write** / **Prove** / **Heal** are lighter. Sample-page prove only. Enhance and Write need `XAI_API_KEY`, unless you already Looked and just want the compiled trace. Worth keeping? Name it and put it in the drawer.
 5. Wander over to a matching site, or click **P**. The background fetches `/agent.js` and swaps if the hash moved.
 
 Leave the desk running while you tinker. Host patterns belong to the browser, not the desk. The list you type on the desk becomes both the content script matches and the `host_permissions`, and the background runs the live agent only on that list, never on the desk page itself. If you add a site, download a fresh zip, unzip over the **same** folder, then reload the extension. Hot-swap cannot invent `host_permissions`. Every browser is stubborn about that, and I am not going to fight all three.
@@ -321,7 +321,6 @@ GET    /api/look                recording flag plus the trace
 POST   /api/look                desk starts/stops, or the shell records a step
 DELETE /api/look                stop and clear
 POST   /api/look/compile        turn the trace into agent.arm
-POST   /api/forge               { job } write three arms, needs XAI_API_KEY
 POST   /api/enhance             three drafts, a critic merge, needs a job or a Look
 GET    /api/examples            the desk shelf
 GET    /sample.html             prove fixture, not a live tab
@@ -373,9 +372,9 @@ agent.scripts               // the stack this agent was built from, in order
 
 `ask(prompt, choices)` posts `{ type: "ask", id, prompt, choices }` and waits up to a minute for `{ type: "ask-result", id, answer }`. Same shape as capture: the bridge hands it to the background, the background posts it to the desk, and the desk paints a bar with the choices. Skip sends an empty string. Without a desk the page still times out empty, the way capture returns `""` when a screenshot does not happen.
 
-**Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Hitting Record twice does not wipe a take that is already rolling. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s the last punch (or the last field, if you never punched). That arm is for the tab you recorded, not for `/sample.html`.
+**Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Hitting Record twice does not wipe a take that is already rolling. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s what appeared after the last punch (the receipt, not the button). That arm is for the tab you recorded, not for `/sample.html`.
 
-**Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`): a draft, then a critic pass. **Enhance** writes three drafts in parallel, seeds them with the compiled Look if you recorded one, and a critic merges. On the sample page it then proves, and heals once if it missed. If you just Looked, Enhance uses that live sketch and will not prove on `/sample.html`. No key, but a Look? Enhance still returns the compiled trace. Heal sends the last miss back to the model (a prove miss, or a must miss from a live tab). Save on the desk is still what arms your real tabs.
+**Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`): a draft, then a critic pass. **Enhance** writes three drafts in parallel, seeds them with the compiled Look if you recorded one, and a critic merges. On the sample page it then proves, and heals once if it missed. If you just Looked, Enhance uses that live sketch and will not prove on `/sample.html`. No key, but a Look? Enhance still returns the compiled trace. After **Save**, the desk watches `must` from the live tab. Heal uses that miss. Prove on the sample page does not tell you if vendor Save worked.
 
 `arm` may return a thenable. `armAll` awaits it, in stack order, so an `async` arm is not dropped. Sync arms still finish in the same turn. An empty stack pips `ok` without touching `Promise`.
 
