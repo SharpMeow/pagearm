@@ -192,6 +192,31 @@ api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     });
     return true;
   }
+  if (msg.type === "ask") {
+    // Same two-shape as capture. The desk holds the question until a human
+    // answers, or we give up empty so the page's own timeout is not the only
+    // thing standing between arm() and the rest of the stack.
+    var asked = askDesk({
+      id: String(msg.id || ""),
+      prompt: String(msg.prompt || ""),
+      choices: msg.choices,
+      where: tab && tab.url ? String(tab.url) : "",
+    }).then(function (answer) { return { answer: answer }; });
+    if (PROMISED) return asked;
+    asked.then(function (res) {
+      try { sendResponse(res); } catch (eR) {}
+    });
+    return true;
+  }
+  if (msg.type === "must") {
+    tellMust({
+      sel: String(msg.sel || "").slice(0, 120),
+      ok: !!msg.ok,
+      note: String(msg.note || "").slice(0, 120),
+      where: tab && tab.url ? String(tab.url).slice(0, 200) : "",
+    });
+    return;
+  }
 });
 
 // An agent that throws on every navigation would otherwise be a firehose, so
@@ -208,6 +233,65 @@ function tellDesk(entry) {
       method: "POST",
       // text/plain keeps this a simple request, so no browser stops to ask the
       // desk for a preflight it does not answer.
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(entry),
+    }));
+  } catch (e) {}
+}
+
+function askDesk(msg) {
+  var id = String(msg.id || "");
+  var choices = [];
+  if (Array.isArray(msg.choices)) {
+    for (var i = 0; i < msg.choices.length && i < 8; i++) choices.push(String(msg.choices[i]).slice(0, 80));
+  }
+  try {
+    quiet(fetch(ORIGIN + "/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({
+        id: id,
+        prompt: String(msg.prompt || "").slice(0, 300),
+        choices: choices,
+        where: String(msg.where || "").slice(0, 200),
+      }),
+    }));
+  } catch (e) {}
+  return new Promise(function (resolve) {
+    var start = Date.now();
+    function poll() {
+      if (Date.now() - start > 55000) {
+        resolve("");
+        return;
+      }
+      var p;
+      try { p = fetch(ORIGIN + "/api/ask"); } catch (eF) {
+        setTimeout(poll, 800);
+        return;
+      }
+      quiet(p);
+      p.then(function (r) { return r.json(); }).then(function (data) {
+        var answers = (data && data.answers) || {};
+        if (Object.prototype.hasOwnProperty.call(answers, id)) {
+          resolve(String(answers[id] == null ? "" : answers[id]));
+          return;
+        }
+        setTimeout(poll, 400);
+      }).catch(function () { setTimeout(poll, 800); });
+    }
+    setTimeout(poll, 200);
+  });
+}
+
+var lastMust = { key: "", at: 0 };
+function tellMust(entry) {
+  var key = entry.sel + "|" + entry.ok + "|" + entry.note;
+  var now = Date.now();
+  if (key === lastMust.key && now - lastMust.at < 2000) return;
+  lastMust = { key: key, at: now };
+  try {
+    quiet(fetch(ORIGIN + "/api/must", {
+      method: "POST",
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify(entry),
     }));

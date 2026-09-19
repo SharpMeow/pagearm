@@ -218,9 +218,11 @@ Bad days:
 Starter agents in `agents/` . They are small on purpose:
 
 - `hello.js` says hi, logs the title, pips green. A handshake.
+- `fill-sample.js` fills the sample page, punches Save, and `must`s the receipt. Prove that one.
 - `highlight-headings.js` outlines `h1` through `h3`, badge is the count.
 - `outline-forms.js` puts a dashed outline on inputs, so you can see what the page thinks a form is.
 - `reading-ruler.js` follows the cursor down a long doc. Nice on a tired evening.
+- `copy-table.js`, `dump-form.js`, `mark-required.js` are the daily ones.
 
 Swap `agent.arm` for the thing you actually do fifty times a day. That is the one worth writing.
 
@@ -293,6 +295,14 @@ A drawer name is letters, digits, dash, and underscore, lowercased. It becomes a
 GET    /api/oops                the last few throws, newest first
 POST   /api/oops                the shell reporting one
 DELETE /api/oops                clear them
+GET    /api/ask                 pending question plus recent answers
+POST   /api/ask                 the shell asking, or the desk answering
+GET    /api/must                the last few must checks from live tabs
+POST   /api/must                the shell reporting one
+DELETE /api/must                clear them
+POST   /api/wrap                wrap editor source so prove can inject it
+POST   /api/author              { job } write an arm, needs XAI_API_KEY
+POST   /api/heal                { source, error } patch an arm, same key
 GET    /api/drawer              the shelf plus the stack
 GET    /api/drawer/:name        one script
 POST   /api/drawer/:name        save it, syntax-checked first
@@ -337,9 +347,11 @@ agent.scripts               // the stack this agent was built from, in order
 
 `onCleanup(fn)` runs at the start of the next `armAll`. That is how a swap drops a listener instead of stacking a second one. `watch` is a MutationObserver that cleans itself. `when` is watch that ignores what was already on the page and fires only for what shows up after. On a vm with no `MutationObserver`, `watch` still runs once and otherwise no-ops.
 
-`must(sel, note)` is a check you can see. Miss, and P goes red. It also posts `{ type: "must", sel, ok, note }` on the page.
+`must(sel, note)` is a check you can see. Miss, and P goes red. It also posts `{ type: "must", sel, ok, note }` on the page, and the bridge carries that to the desk.
 
-`ask(prompt, choices)` posts `{ type: "ask", id, prompt, choices }` and waits up to a minute for `{ type: "ask-result", id, answer }`. Same shape as capture. The packed desk does not yet answer it. A page that listens can. Without a listener it resolves to an empty string.
+`ask(prompt, choices)` posts `{ type: "ask", id, prompt, choices }` and waits up to a minute for `{ type: "ask-result", id, answer }`. Same shape as capture: the bridge hands it to the background, the background posts it to the desk, and the desk paints a bar with the choices. Skip sends an empty string. Without a desk the page still times out empty, the way capture returns `""` when a screenshot does not happen.
+
+**Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`) and then prove that source on `/sample.html` in a frame on the desk, not in a live tab. Prove auto-answers `ask` with the first choice so it does not wait on you. Heal sends the last miss back to the model and proves again. A punch on Save in that frame does not hit a vendor. Save on the desk is still what arms your real tabs.
 
 `arm` may return a thenable. `armAll` awaits it, in stack order, so an `async` arm is not dropped. Sync arms still finish in the same turn. An empty stack pips `ok` without touching `Promise`.
 

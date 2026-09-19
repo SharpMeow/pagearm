@@ -181,9 +181,92 @@ function loopbackHost(req) {
 // this is a workshop light, not a log file, and it should not outlive the desk.
 const MAX_OOPS = 10;
 let oopsLog = [];
+const MAX_MUST = 20;
+let mustLog = [];
+const MAX_ASK_ANSWERS = 10;
+let askState = { pending: null, answers: {} };
 
 function clamp(value, max) {
   return String(value === undefined || value === null ? "" : value).slice(0, max);
+}
+
+function rememberAnswer(id, answer) {
+  const key = clamp(id, 80);
+  if (!key) return;
+  askState.answers[key] = String(answer == null ? "" : answer).slice(0, 300);
+  const keys = Object.keys(askState.answers);
+  while (keys.length > MAX_ASK_ANSWERS) {
+    delete askState.answers[keys.shift()];
+  }
+  if (askState.pending && askState.pending.id === key) askState.pending = null;
+}
+
+const SAMPLE_SKETCH = [
+  "Sample receiving page used by Prove.",
+  "#vessel #catch #stone #grade #berth #hold #notes",
+  "#save-claim ignores a naked click; punch it. paints #receipt",
+  "#lots tbody tr with data-lot data-vessel data-catch data-stone data-grade",
+  "#arrive appends a row",
+  "#pay and #amount live in open shadow on wharf-till",
+  "#paid is the till receipt",
+  "#clerk-log",
+].join("\n");
+
+const AGENT_API = [
+  "You write PageArm agent scripts. A script assigns agent.arm.",
+  "",
+  "API:",
+  "- agent.q(sel, root?) querySelector, pierces open shadow roots and same-origin iframes",
+  "- agent.qa(sel, root?) querySelectorAll as array, same pierce",
+  "- agent.click(el) naked click",
+  "- agent.punch(el) composed pointer+mouse+click. Use this on stubborn buttons and anything in shadow.",
+  "- agent.type(el, text) prototype setter plus InputEvent insertText. Works on React/Vue and shadow inputs.",
+  "- agent.wait(ms) Promise",
+  "- agent.pip(state, mark?) idle|work|ok|err",
+  "- agent.capture() viewport snapshot",
+  "- agent.match current host+path",
+  "- agent.onCleanup(fn) run before the next arm. Unregister listeners here.",
+  "- agent.watch(sel, fn) MutationObserver, auto-cleaned.",
+  "- agent.when(sel, fn) fires only for nodes that appear after arm.",
+  "- agent.must(sel, note?) assert the selector exists and is not hidden. Call this on the success condition.",
+  "- agent.ask(prompt, choices[]) Promise. The desk answers. Do not fake the answer.",
+  "",
+  "Rules:",
+  "- agent.arm may be async. The runtime awaits it.",
+  "- Write it idempotent. arm() can run twice on one load.",
+  "- American English. No em dashes. Return ONLY the JavaScript source.",
+  "- Prefer stable ids (#vessel) over brittle nth-child.",
+  "- If a control might ignore .click, punch it.",
+].join("\n");
+
+function stripFence(text) {
+  const m = String(text || "").match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
+  return (m ? m[1] : String(text || "")).trim();
+}
+
+async function chatXai(messages, maxTokens) {
+  const key = process.env.XAI_API_KEY;
+  if (!key) return { ok: false, status: 503, error: "set XAI_API_KEY to let the desk write" };
+  const r = await fetch("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + key,
+    },
+    body: JSON.stringify({
+      model: "grok-4.5",
+      messages,
+      max_tokens: maxTokens || 900,
+      temperature: 0.2,
+    }),
+  });
+  if (!r.ok) return { ok: false, status: 502, error: "xAI API error " + r.status };
+  let body = {};
+  try { body = await r.json(); } catch (e) { return { ok: false, status: 502, error: "xAI API sent junk" }; }
+  const text = body && body.choices && body.choices[0] && body.choices[0].message
+    ? body.choices[0].message.content
+    : "";
+  return { ok: true, text: String(text || "") };
 }
 
 // The desk page is the only thing that writes. A cross-site page cannot, even
@@ -500,9 +583,188 @@ async function handle(req, res) {
     return;
   }
 
+  if (url.pathname === "/api/must") {
+    if (req.method === "GET") {
+      send(res, 200, JSON.stringify({ musts: mustLog }), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method === "DELETE") {
+      if (!sameSite(req)) {
+        send(res, 403, "only the desk may clear that");
+        return;
+      }
+      mustLog = [];
+      send(res, 200, JSON.stringify({ ok: true, musts: mustLog }), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, "not that way");
+      return;
+    }
+    if (!fromShell(req)) {
+      send(res, 403, "only the shell may report that");
+      return;
+    }
+    let told = {};
+    try {
+      told = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    mustLog.unshift({
+      sel: clamp(told.sel, 120),
+      ok: !!told.ok,
+      note: clamp(told.note, 120),
+      where: clamp(told.where, 200),
+      at: Date.now(),
+    });
+    mustLog = mustLog.slice(0, MAX_MUST);
+    send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/ask") {
+    if (req.method === "GET") {
+      send(res, 200, JSON.stringify(askState), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, "not that way");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "answer")) {
+      if (!sameSite(req)) {
+        send(res, 403, "only the desk may answer");
+        return;
+      }
+      rememberAnswer(body.id, body.answer);
+      send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+      return;
+    }
+    if (!fromShell(req)) {
+      send(res, 403, "only the shell may ask");
+      return;
+    }
+    const id = clamp(body.id, 80);
+    if (!id) {
+      send(res, 400, "need an id");
+      return;
+    }
+    const choices = Array.isArray(body.choices)
+      ? body.choices.map((c) => clamp(c, 80)).filter(Boolean).slice(0, 8)
+      : [];
+    askState.pending = {
+      id,
+      prompt: clamp(body.prompt, 300),
+      choices,
+      where: clamp(body.where, 200),
+      at: Date.now(),
+    };
+    send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/wrap" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may wrap");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const source = String(body.source || "");
+    const err = compileError(source);
+    if (err) {
+      send(res, 400, JSON.stringify({ ok: false, error: err }), "application/json; charset=utf-8");
+      return;
+    }
+    send(res, 200, JSON.stringify({ ok: true, code: wrapAgent(source) }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/author" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may author");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const job = String(body.job || "").trim();
+    if (!job) {
+      send(res, 400, JSON.stringify({ ok: false, error: "say what the agent should do" }), "application/json; charset=utf-8");
+      return;
+    }
+    const page = String(body.page || SAMPLE_SKETCH).slice(0, 4000);
+    const result = await chatXai(
+      [
+        { role: "system", content: AGENT_API },
+        { role: "user", content: "Write agent.arm for this job.\n\nJob:\n" + job + "\n\nPage sketch:\n" + page },
+      ],
+      900,
+    );
+    if (!result.ok) {
+      send(res, result.status || 502, JSON.stringify({ ok: false, error: result.error }), "application/json; charset=utf-8");
+      return;
+    }
+    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text) }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/heal" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may heal");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const source = String(body.source || "");
+    const error = String(body.error || "").trim();
+    if (!source.trim() || !error) {
+      send(res, 400, JSON.stringify({ ok: false, error: "need the script and what went wrong" }), "application/json; charset=utf-8");
+      return;
+    }
+    const page = String(body.page || SAMPLE_SKETCH).slice(0, 4000);
+    const result = await chatXai(
+      [
+        { role: "system", content: AGENT_API + "\nPatch the script so the error stops. Keep the same job." },
+        { role: "user", content: "Error:\n" + error + "\n\nScript:\n" + source + "\n\nPage sketch:\n" + page },
+      ],
+      900,
+    );
+    if (!result.ok) {
+      send(res, result.status || 502, JSON.stringify({ ok: false, error: result.error }), "application/json; charset=utf-8");
+      return;
+    }
+    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text) }), "application/json; charset=utf-8");
+    return;
+  }
+
   if (url.pathname === "/api/examples") {
     const names = [
       "hello.js",
+      "fill-sample.js",
       "highlight-headings.js",
       "outline-forms.js",
       "reading-ruler.js",

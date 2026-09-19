@@ -22,13 +22,35 @@
           <h2>Agent</h2>
           <div class="examples" id="examples"></div>
         </div>
+        <div class="ask" id="ask" hidden>
+          <p id="ask-prompt"></p>
+          <div class="ask-choices" id="ask-choices"></div>
+          <button type="button" id="ask-skip" class="quiet">Skip</button>
+        </div>
         <textarea id="source" spellcheck="false" aria-label="Agent source"></textarea>
         <div class="row">
           <button type="button" id="save">Save agent</button>
           <span id="save-state" class="muted" role="status" aria-live="polite"></span>
         </div>
 
+        <div class="author">
+          <div class="row">
+            <h2>Write</h2>
+            <span class="muted">Prove runs on the sample page in a frame here, not on a live tab.</span>
+          </div>
+          <div class="row drawer-controls">
+            <input id="job" spellcheck="true" autocomplete="off" placeholder="fill the claim and punch Save" aria-label="Job for the model" />
+            <button type="button" id="write">Write</button>
+            <button type="button" id="prove" class="quiet">Prove</button>
+            <button type="button" id="heal" class="quiet">Heal</button>
+          </div>
+          <p class="muted" id="author-state" role="status" aria-live="polite"></p>
+          <iframe id="prove-frame" title="Prove" hidden></iframe>
+          <p id="prove-out" role="status"></p>
+        </div>
+
         <p class="oops" id="oops" role="status" aria-live="polite" hidden></p>
+        <p class="musts" id="musts" hidden></p>
 
         <div class="drawer">
           <div class="row">

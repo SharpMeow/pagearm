@@ -16,6 +16,18 @@ const drawerDeleteBtn = document.getElementById("drawer-delete");
 const stackListEl = document.getElementById("stack-list");
 const drawerCountEl = document.getElementById("drawer-count");
 const oopsEl = document.getElementById("oops");
+const askEl = document.getElementById("ask");
+const askPromptEl = document.getElementById("ask-prompt");
+const askChoicesEl = document.getElementById("ask-choices");
+const askSkipBtn = document.getElementById("ask-skip");
+const jobEl = document.getElementById("job");
+const writeBtn = document.getElementById("write");
+const proveBtn = document.getElementById("prove");
+const healBtn = document.getElementById("heal");
+const authorState = document.getElementById("author-state");
+const proveFrame = document.getElementById("prove-frame");
+const proveOut = document.getElementById("prove-out");
+const mustsEl = document.getElementById("musts");
 
 // Two different things. `bound` is the drawer script the editor is holding.
 // `stack` is the ordered list the browser is actually running, which is usually
@@ -470,6 +482,216 @@ async function pollOops() {
   } catch (e) {}
 }
 
+let askShown = null;
+function showAsk(pending) {
+  if (!pending || !pending.id) {
+    askEl.hidden = true;
+    askShown = null;
+    return;
+  }
+  if (askShown === pending.id) return;
+  askShown = pending.id;
+  askEl.hidden = false;
+  askPromptEl.textContent = pending.prompt || "the page is asking";
+  askChoicesEl.innerHTML = "";
+  (pending.choices || []).forEach((choice) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = choice;
+    b.addEventListener("click", () => answerAsk(choice));
+    askChoicesEl.appendChild(b);
+  });
+}
+
+async function answerAsk(answer) {
+  const id = askShown;
+  askEl.hidden = true;
+  if (!id) return;
+  try {
+    await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, answer }),
+    });
+  } catch (e) {}
+  askShown = null;
+}
+
+async function pollAsk() {
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await fetch("/api/ask");
+    const data = await r.json();
+    showAsk(data.pending || null);
+  } catch (e) {}
+}
+
+function showMusts(musts) {
+  if (!musts || !musts.length) {
+    mustsEl.hidden = true;
+    mustsEl.textContent = "";
+    return;
+  }
+  mustsEl.hidden = false;
+  mustsEl.textContent = musts.slice(0, 5).map((m) =>
+    (m.ok ? "ok" : "miss") + " " + (m.note || m.sel || "")
+  ).join(" · ");
+}
+
+async function pollMusts() {
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await fetch("/api/must");
+    const data = await r.json();
+    showMusts(data.musts || []);
+  } catch (e) {}
+}
+
+let proving = false;
+let lastProveError = "";
+
+function proveScore(musts, pip) {
+  const total = musts.length;
+  const passed = musts.filter((m) => m.ok).length;
+  const misses = musts.filter((m) => !m.ok).map((m) => m.note || m.sel);
+  if (total && passed === total) return { ok: true, text: passed + "/" + total + " must", error: "" };
+  if (total) return { ok: false, text: passed + "/" + total + " must", error: misses.join("; ") };
+  if (pip === "ok") return { ok: true, text: "pip ok", error: "" };
+  if (pip === "err") return { ok: false, text: "pip err", error: "pip err" };
+  return { ok: false, text: "pip " + pip, error: "no must and pip " + pip };
+}
+
+async function prove() {
+  if (proving) return { ok: false, error: "already proving" };
+  proving = true;
+  proveOut.textContent = "proving…";
+  proveFrame.hidden = false;
+  try {
+    const r = await fetch("/api/wrap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: source.value }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      proveOut.textContent = "not wrapped: " + (data.error || r.status);
+      showBroken(data.error);
+      lastProveError = data.error || "wrap failed";
+      proving = false;
+      return { ok: false, error: lastProveError };
+    }
+    const musts = [];
+    let pip = "idle";
+    const asked = [];
+    function onPa(d) {
+      if (!d || d.source !== "pa") return;
+      if (d.type === "must") musts.push(d);
+      if (d.type === "pip") pip = d.state || pip;
+      if (d.type === "ask") {
+        asked.push(d.prompt || "");
+        const choice = Array.isArray(d.choices) && d.choices[0] != null ? String(d.choices[0]) : "";
+        try {
+          proveFrame.contentWindow.postMessage({ source: "pa", type: "ask-result", id: d.id, answer: choice }, "*");
+        } catch (e) {}
+      }
+    }
+    await new Promise((resolve) => {
+      let done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        resolve();
+      }
+      proveFrame.onload = () => {
+        try {
+          proveFrame.contentWindow.addEventListener("message", (ev) => onPa(ev.data));
+          const s = proveFrame.contentDocument.createElement("script");
+          s.textContent = data.code;
+          proveFrame.contentDocument.documentElement.appendChild(s);
+        } catch (e) {}
+        setTimeout(finish, 2200);
+      };
+      proveFrame.src = "/sample.html?t=" + Date.now();
+      setTimeout(finish, 5000);
+    });
+    const score = proveScore(musts, pip);
+    const bits = [score.text];
+    if (asked.length) bits.push("ask auto: " + asked[0]);
+    musts.forEach((m) => bits.push((m.ok ? "ok" : "miss") + " " + (m.note || m.sel)));
+    proveOut.textContent = bits.join(" · ");
+    lastProveError = score.error;
+    proving = false;
+    return score;
+  } catch (e) {
+    proveOut.textContent = "prove failed";
+    lastProveError = "prove failed";
+    proving = false;
+    return { ok: false, error: lastProveError };
+  }
+}
+
+async function writeAgent() {
+  const job = jobEl.value.trim();
+  if (!job) {
+    authorState.textContent = "say what the agent should do";
+    jobEl.focus();
+    return;
+  }
+  authorState.textContent = "writing…";
+  try {
+    const r = await fetch("/api/author", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      authorState.textContent = data.error || ("not written: " + r.status);
+      return;
+    }
+    source.value = data.source || "";
+    bound = null;
+    saveState.textContent = "unsaved write";
+    authorState.textContent = "wrote. proving…";
+    const score = await prove();
+    authorState.textContent = score && score.ok ? "wrote, prove ok" : "wrote, prove missed";
+  } catch (e) {
+    authorState.textContent = "desk unreachable";
+  }
+}
+
+async function healAgent() {
+  const error = lastProveError || (oopsEl.hidden ? "" : (oopsEl.querySelector(".said") || {}).textContent || "");
+  if (!source.value.trim()) {
+    authorState.textContent = "nothing to heal";
+    return;
+  }
+  if (!error) {
+    authorState.textContent = "prove first, or wait for a throw";
+    return;
+  }
+  authorState.textContent = "healing…";
+  try {
+    const r = await fetch("/api/heal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: source.value, error }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      authorState.textContent = data.error || ("not healed: " + r.status);
+      return;
+    }
+    source.value = data.source || "";
+    saveState.textContent = "unsaved heal";
+    authorState.textContent = "healed. proving…";
+    const score = await prove();
+    authorState.textContent = score && score.ok ? "healed, prove ok" : "healed, prove missed";
+  } catch (e) {
+    authorState.textContent = "desk unreachable";
+  }
+}
+
 // A syntax error comes back with the line it broke on. Put the cursor there,
 // because hunting for line 34 by eye is the least pleasant part of a typo.
 function showBroken(message) {
@@ -519,6 +741,16 @@ source.addEventListener("keydown", (ev) => {
 });
 
 saveBtn.addEventListener("click", save);
+writeBtn.addEventListener("click", writeAgent);
+proveBtn.addEventListener("click", () => prove());
+healBtn.addEventListener("click", healAgent);
+askSkipBtn.addEventListener("click", () => answerAsk(""));
+jobEl.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    writeAgent();
+  }
+});
 drawerSaveBtn.addEventListener("click", () => putInDrawer(false));
 drawerLiveBtn.addEventListener("click", () => putInDrawer(true));
 drawerDeleteBtn.addEventListener("click", removeFromDrawer);
@@ -550,3 +782,7 @@ loadExamples().catch(() => {});
 pollOops();
 setInterval(pollOops, 4000);
 document.addEventListener("visibilitychange", pollOops);
+pollAsk();
+setInterval(pollAsk, 800);
+pollMusts();
+setInterval(pollMusts, 4000);

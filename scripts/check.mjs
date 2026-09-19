@@ -161,6 +161,9 @@ ok(/webNavigation\.onHistoryStateUpdated/.test(shell) && /if \(api\.webNavigatio
 ok(/type === "nav"/.test(shell) && /type: "nav"/.test(bridgeSrc), "the bridge covers that gap with a nav message");
 ok(/type === "oops"/.test(shell) && /type: "oops"/.test(bridgeSrc), "a throw in the page travels to the background");
 ok(/quiet\(fetch\(ORIGIN \+ "\/api\/oops"/.test(shell), "and on to the desk, as a promise nobody leaves unhandled");
+ok(/type === "ask"/.test(bridgeSrc) && /ask-result/.test(bridgeSrc), "the bridge carries ask the way it carries capture");
+ok(/ORIGIN \+ "\/api\/ask"/.test(shell), "ask polls the desk");
+ok(/type === "must"/.test(bridgeSrc) && /ORIGIN \+ "\/api\/must"/.test(shell), "must travels to the desk, quietly");
 ok(/text\/plain/.test(shell), "posted as text/plain, so no browser stops for a preflight the desk cannot answer");
 ok(normalizeTarget("chrome") === "chromium" && normalizeTarget("ff") === "firefox" && normalizeTarget("nonsense") === "chromium",
   "browser names normalize to a known target");
@@ -387,6 +390,80 @@ try {
     "it keeps the last ten, newest first, and does not grow forever");
   const cleared = await desk("/api/oops", { method: "DELETE" });
   ok(cleared.status === 200 && (await (await desk("/api/oops")).json()).errors.length === 0, "and the desk can clear them");
+
+  const asked = await desk("/api/ask", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ id: "ask-1", prompt: "which boat", choices: ["heron", "mackerel"] }),
+  });
+  ok(asked.status === 200, "the shell may post an ask");
+  const pending = await (await desk("/api/ask")).json();
+  ok(pending.pending && pending.pending.prompt === "which boat" && pending.pending.choices[0] === "heron",
+    "and the desk holds the question");
+  const forgedAsk = await desk("/api/ask", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ id: "ask-1", answer: "stolen" }),
+  });
+  ok(forgedAsk.status === 403, "a site you visit may not answer it");
+  const answered = await desk("/api/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: "ask-1", answer: "heron" }),
+  });
+  ok(answered.status === 200, "the desk may answer");
+  const heardAsk = await (await desk("/api/ask")).json();
+  ok(heardAsk.answers["ask-1"] === "heron" && !heardAsk.pending, "and the shell can poll that answer");
+
+  const musted = await desk("/api/must", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "moz-extension://pretendthisisreal" },
+    body: JSON.stringify({ sel: "#receipt", ok: true, note: "receipt painted", where: "https://example.com/" }),
+  });
+  ok(musted.status === 200, "the shell may post a must");
+  const mustHeard = await (await desk("/api/must")).json();
+  ok(mustHeard.musts[0].sel === "#receipt" && mustHeard.musts[0].ok === true, "and the desk keeps it");
+  ok((await desk("/api/must", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ sel: "#x", ok: true }),
+  })).status === 403, "a site you visit may not post a must");
+
+  const wrapPost = await desk("/api/wrap", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: "agent.arm = function () {};" }),
+  });
+  const wrappedBody = await wrapPost.json();
+  ok(wrapPost.status === 200 && /function step\(/.test(wrappedBody.code), "the desk will wrap editor source for prove");
+  ok((await desk("/api/wrap", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ source: "agent.arm = function () {};" }),
+  })).status === 403, "a cross-site page cannot wrap");
+
+  const authorEmpty = await desk("/api/author", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job: "" }),
+  });
+  ok(authorEmpty.status === 400, "author refuses a blank job");
+  ok((await desk("/api/author", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ job: "fill it" }),
+  })).status === 403, "a cross-site page cannot author");
+  if (!process.env.XAI_API_KEY) {
+    const noKey = await desk("/api/author", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: "fill the claim" }),
+    });
+    ok(noKey.status === 503, "author says so when there is no key");
+  }
+
+  const sample = await desk("/sample.html");
+  ok(sample.status === 200 && /save-claim/.test(await sample.text()), "the sample page is on the desk for prove");
 
   const icon = await desk("/favicon.png");
   ok(icon.status === 200 && icon.headers.get("content-type") === "image/png",

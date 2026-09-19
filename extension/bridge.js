@@ -1,6 +1,6 @@
-// Isolated-world courier. Carries pip, capture, and nav between the page and
-// the worker. No keepalive: webNavigation wakes the worker when it is needed,
-// and a tab that pokes it every twelve seconds forever only burns battery.
+// Isolated-world courier. Carries pip, capture, ask, must, and nav between the
+// page and the worker. No keepalive: webNavigation wakes the worker when it is
+// needed, and a tab that pokes it every twelve seconds forever only burns battery.
 
 // Firefox and Safari hand content scripts a promise-shaped `browser`. Chromium
 // has `chrome` and a callback. The courier does not care which house it is in.
@@ -41,10 +41,25 @@ window.addEventListener("message", function (ev) {
   if (d.type === "oops") {
     send({ type: "oops", script: d.script || "", message: d.message || "", where: d.where || "" });
   }
+  if (d.type === "must") {
+    send({ type: "must", sel: d.sel || "", ok: !!d.ok, note: d.note || "" });
+  }
   if (d.type === "capture") {
     send({ type: "capture" }, function (res) {
       try {
         window.postMessage({ source: "pa", type: "capture-result", dataUrl: (res && res.dataUrl) || "" }, "*");
+      } catch (ePost) {}
+    });
+  }
+  if (d.type === "ask") {
+    send({ type: "ask", id: d.id || "", prompt: d.prompt || "", choices: d.choices || [] }, function (res) {
+      try {
+        window.postMessage({
+          source: "pa",
+          type: "ask-result",
+          id: d.id || "",
+          answer: (res && res.answer) || "",
+        }, "*");
       } catch (ePost) {}
     });
   }
