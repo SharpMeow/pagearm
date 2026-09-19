@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sample</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: #f3efe4; color: #1c1a14; font: 16px/1.5 Georgia, "Times New Roman", serif; }
+      body { padding: 20px 18px 40px; }
+      .kicker { font: 11px/1.3 ui-monospace, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; color: #6d675c; margin: 0 0 6px; }
+      h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; }
+      h2 { font-size: 16px; margin: 22px 0 8px; }
+      form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 12px 0; }
+      label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #4a463c; }
+      label.wide { grid-column: 1 / -1; }
+      input, select, textarea, button {
+        font: 15px/1.4 Georgia, "Times New Roman", serif;
+        padding: 8px 10px;
+        border: 1px solid #c9c2b3;
+        background: #fffcf6;
+        color: #1c1a14;
+      }
+      textarea { min-height: 56px; }
+      #save-claim {
+        background: #1c1a14;
+        color: #f3efe4;
+        border: 0;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        font: 12px/1 ui-monospace, Menlo, monospace;
+        cursor: pointer;
+      }
+      .receipt { display: none; margin: 0 0 12px; padding: 10px 12px; background: #e6dfd0; border: 1px solid #c9c2b3; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 6px; border-bottom: 1px solid #e0d8c8; }
+      th { font: 11px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; color: #6d675c; }
+      .warn { color: #9a2e2e; font-size: 13px; min-height: 1.2em; }
+      #clerk-log { font: 13px/1.4 ui-monospace, Menlo, monospace; color: #4a463c; }
+      wharf-till { display: block; margin: 16px 0 0; }
+    </style>
+  </head>
+  <body>
+    <p class="kicker">Prove page · not a live tab</p>
+    <h1>Sample receiving</h1>
+    <p class="warn" id="click-warn"></p>
+    <p class="receipt" id="receipt" hidden></p>
+    <form id="claim" onsubmit="return false">
+      <label>Vessel <input id="vessel" name="vessel" required autocomplete="off" /></label>
+      <label>Catch <input id="catch" name="catch" required autocomplete="off" /></label>
+      <label>Stone <input id="stone" name="stone" required autocomplete="off" /></label>
+      <label>Grade
+        <select id="grade" name="grade" required>
+          <option value="">Choose</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+        </select>
+      </label>
+      <label>Berth <input id="berth" name="berth" autocomplete="off" /></label>
+      <label>Hold
+        <select id="hold" name="hold">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+        </select>
+      </label>
+      <label class="wide">Notes <textarea id="notes" name="notes"></textarea></label>
+      <div><button type="button" id="save-claim">Save claim</button></div>
+    </form>
+    <h2>Today's lots</h2>
+    <table id="lots">
+      <thead><tr><th>Lot</th><th>Vessel</th><th>Catch</th><th>Stone</th><th>Grade</th></tr></thead>
+      <tbody>
+        <tr data-lot="117" data-vessel="Red Dory" data-catch="cod" data-stone="180" data-grade="A">
+          <td>117</td><td>Red Dory</td><td>cod</td><td>180</td><td>A</td>
+        </tr>
+        <tr data-lot="118" data-vessel="Salt Lark" data-catch="mackerel" data-stone="95" data-grade="B">
+          <td>118</td><td>Salt Lark</td><td>mackerel</td><td>95</td><td>B</td>
+        </tr>
+        <tr data-lot="119" data-vessel="Night Heron" data-catch="herring" data-stone="310" data-grade="A">
+          <td>119</td><td>Night Heron</td><td>herring</td><td>310</td><td>A</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" id="arrive">Boat in</button>
+    <wharf-till></wharf-till>
+    <h2>Clerk log</h2>
+    <ol id="clerk-log"></ol>
+    <script>
+      (function () {
+        var armed = false;
+        var saved = false;
+        var btn = document.getElementById("save-claim");
+        var warn = document.getElementById("click-warn");
+        var receipt = document.getElementById("receipt");
+        btn.addEventListener("pointerdown", function () { armed = true; });
+        btn.addEventListener("click", function (ev) {
+          if (saved) { warn.textContent = ""; return; }
+          if (!armed) {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            warn.textContent = "This control ignored a naked click. Punch it.";
+            return;
+          }
+          armed = false;
+          saved = true;
+          warn.textContent = "";
+          receipt.hidden = false;
+          receipt.style.display = "block";
+          receipt.textContent = "Claim saved. " +
+            (document.getElementById("vessel").value || "(unnamed)") + " · " +
+            (document.getElementById("catch").value || "mixed") + " · " +
+            (document.getElementById("stone").value || "0") + " stone.";
+        });
+        document.getElementById("arrive").addEventListener("click", function () {
+          var body = document.querySelector("#lots tbody");
+          var n = 120 + body.querySelectorAll("tr").length;
+          var tr = document.createElement("tr");
+          tr.setAttribute("data-lot", String(n));
+          tr.setAttribute("data-vessel", "Gull Wing");
+          tr.setAttribute("data-catch", "whiting");
+          tr.setAttribute("data-stone", String(40 + n));
+          tr.setAttribute("data-grade", "A");
+          tr.innerHTML = "<td>" + n + "</td><td>Gull Wing</td><td>whiting</td><td>" + (40 + n) + "</td><td>A</td>";
+          body.appendChild(tr);
+        });
+        class WharfTill extends HTMLElement {
+          connectedCallback() {
+            if (this.shadowRoot) return;
+            var root = this.attachShadow({ mode: "open" });
+            root.innerHTML = '<style>:host{display:block;padding:12px;border:1px solid #c9c2b3;background:#fffcf6}p{margin:0 0 8px;font:12px/1.3 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6d675c}input,button{font:15px Georgia,serif;padding:8px 10px}button{background:#1c1a14;color:#f3efe4;border:0;cursor:pointer;font:12px/1 ui-monospace,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}#paid{margin:8px 0 0;font:14px Georgia,serif}</style><p>Till · open shadow</p><label>Amount <input id="amount" value="12" /></label> <button type="button" id="pay">Pay till</button><p id="paid" hidden></p>';
+            var pay = root.getElementById("pay");
+            var paid = root.getElementById("paid");
+            var cocked = false;
+            var settled = false;
+            pay.addEventListener("pointerdown", function () { cocked = true; });
+            pay.addEventListener("click", function (ev) {
+              if (settled) return;
+              if (!cocked) {
+                ev.preventDefault();
+                paid.hidden = false;
+                paid.textContent = "Till ignored a naked click.";
+                return;
+              }
+              cocked = false;
+              settled = true;
+              paid.hidden = false;
+              paid.textContent = "Paid " + (root.getElementById("amount").value || "0") + ".";
+            });
+          }
+        }
+        customElements.define("wharf-till", WharfTill);
+      })();
+    </script>
+  </body>
+</html>
