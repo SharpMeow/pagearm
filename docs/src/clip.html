@@ -1,223 +1,222 @@
 <!DOCTYPE html>
 <!--
-  Source for docs/look.gif. A self-playing clip: click fails, punch works,
-  compile musts the receipt. Recorded 880x460. Edit here, not the GIF.
+  Source for docs/look.gif. Click fails, punch works, compile musts the
+  receipt. One status line. Nothing stacks on top of anything else.
+  Recorded 880x500. Edit here, not the GIF.
 -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="shared.css" />
     <style>
-      html, body { width: 880px; height: 460px; padding: 0; overflow: hidden; background: #0b0c09; }
+      html, body { width: 880px; height: 500px; padding: 0; overflow: hidden; background: #0b0c09; }
       body { display: block; }
-      .stage { position: relative; width: 880px; height: 460px; }
+      .stage { width: 880px; height: 500px; }
       .top {
-        display: flex; align-items: center; gap: 14px;
-        padding: 14px 20px 10px;
+        display: flex; align-items: center; gap: 12px;
+        padding: 16px 22px 8px;
       }
       .pip {
-        width: 36px; height: 36px; border-radius: 10px;
+        width: 34px; height: 34px; border-radius: 10px;
         background: #191b16; border: 1px solid #23261e;
         display: flex; align-items: center; justify-content: center;
-        font: 700 20px/1 Inter, sans-serif;
+        font: 700 18px/1 Inter, sans-serif;
         color: #8b9098;
       }
-      body.play .pip { animation: pip 8.4s linear both; }
-      @keyframes pip {
-        0%, 28% { color: #8b9098; }
-        34%, 42% { color: #e8b93c; }
-        48%, 100% { color: #b8ff3c; }
-      }
+      .pip.work { color: #e8b93c; }
+      .pip.ok { color: #b8ff3c; }
       .kicker { margin: 0; letter-spacing: 0.18em; }
       .grid {
         display: grid;
-        grid-template-columns: 1.05fr 0.95fr;
-        gap: 14px;
-        padding: 4px 18px 16px;
-        height: 390px;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        padding: 8px 22px 22px;
       }
       .card {
         background: #121410;
         border: 1px solid #23261e;
         border-radius: 16px;
-        padding: 16px 18px;
-        position: relative;
-        overflow: hidden;
+        padding: 18px 20px 20px;
+        min-height: 400px;
       }
-      .label { margin-bottom: 8px; }
+      .label { margin-bottom: 10px; }
       .portal h2 {
         font-family: "Source Serif 4", Georgia, serif;
-        font-weight: 400; font-size: 22px; margin: 0 0 10px;
+        font-weight: 400; font-size: 24px; margin: 0 0 14px;
       }
-      .row { display: flex; gap: 8px; margin-bottom: 8px; }
+      .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-bottom: 14px; }
       .fake {
-        flex: 1; height: 28px; border-radius: 6px;
+        height: 30px; border-radius: 6px;
         background: #1a1c16; border: 1px solid #2a2d24;
       }
+      .hit {
+        display: flex; align-items: center; gap: 12px;
+        min-height: 40px;
+        position: relative;
+      }
       .save {
-        margin-top: 8px;
         display: inline-flex; align-items: center; justify-content: center;
-        height: 34px; padding: 0 14px; border-radius: 8px;
+        height: 36px; padding: 0 16px; border-radius: 8px;
         background: #ece6d6; color: #1c1a14;
         font: 600 12px/1 Inter, sans-serif;
         letter-spacing: 0.08em; text-transform: uppercase;
-        position: relative;
+        border: 0;
       }
-      body.play .save { animation: shake 8.4s linear both; }
+      .save.shake { animation: shake 0.28s linear; }
       @keyframes shake {
-        0%, 11% { transform: none; }
-        12% { transform: translateX(-4px); }
-        14% { transform: translateX(4px); }
-        16% { transform: translateX(-2px); }
-        18%, 100% { transform: none; }
+        0% { transform: none; }
+        25% { transform: translateX(-4px); }
+        50% { transform: translateX(4px); }
+        75% { transform: translateX(-2px); }
+        100% { transform: none; }
       }
+      .status {
+        font: 500 13px/1.3 Inter, sans-serif;
+        color: #6f7563;
+        min-height: 1.3em;
+      }
+      .status.bad { color: #ff8a8a; }
+      .status.good { color: #c8e87a; }
       .receipt {
-        margin-top: 12px; padding: 8px 10px; border-radius: 8px;
-        background: #1c1e16; border: 1px solid #2f3328;
-        color: #c8c4b0; font-size: 13px;
-        opacity: 0; transform: translateY(6px);
-      }
-      body.play .receipt { animation: receipt 8.4s linear both; }
-      @keyframes receipt {
-        0%, 32% { opacity: 0; transform: translateY(6px); }
-        38%, 100% { opacity: 1; transform: translateY(0); }
-      }
-      .toast {
-        position: absolute; left: 18px; bottom: 16px;
-        font: 500 12.5px/1.3 Inter, sans-serif;
-        color: #ff8a8a;
+        margin-top: 16px; padding: 10px 12px; border-radius: 8px;
+        background: transparent; border: 1px solid transparent;
+        color: #c8c4b0; font-size: 13.5px;
+        min-height: 2.6em;
         opacity: 0;
       }
-      body.play .toast { animation: toast 8.4s linear both; }
-      @keyframes toast {
-        0%, 10% { opacity: 0; }
-        14%, 24% { opacity: 1; }
-        30%, 100% { opacity: 0; }
+      .receipt.on {
+        opacity: 1;
+        background: #1c1e16; border-color: #2f3328;
       }
       .code {
         font-family: "JetBrains Mono", ui-monospace, monospace;
-        font-size: 13.5px; line-height: 1.55;
-        color: #6f7563; white-space: pre;
-        min-height: 7.5em;
+        font-size: 14px; line-height: 1.65;
+        color: #4e5346;
+        min-height: 8.2em;
       }
+      .code span { display: block; opacity: 0; }
+      .code span.on { opacity: 1; }
       .code .hi { color: #d6d2c4; }
       .code .ac { color: #b8ff3c; }
-      .code .dim { color: #4e5346; }
-      body.play .ln1 { animation: type 8.4s linear both; }
-      body.play .ln2 { animation: type2 8.4s linear both; }
-      body.play .ln3 { animation: type3 8.4s linear both; }
-      body.play .ln4 { animation: type4 8.4s linear both; }
-      @keyframes type {
-        0%, 42% { opacity: 0; }
-        46%, 100% { opacity: 1; }
-      }
-      @keyframes type2 {
-        0%, 48% { opacity: 0; }
-        52%, 100% { opacity: 1; }
-      }
-      @keyframes type3 {
-        0%, 56% { opacity: 0; }
-        60%, 100% { opacity: 1; }
-      }
-      @keyframes type4 {
-        0%, 64% { opacity: 0; }
-        68%, 100% { opacity: 1; }
-      }
       .note {
-        margin-top: 14px; font-size: 13.5px; color: #9aa18a;
+        margin-top: 18px; font-size: 14px; color: #9aa18a; min-height: 2.8em;
         opacity: 0;
       }
-      body.play .note { animation: note 8.4s linear both; }
-      @keyframes note {
-        0%, 70% { opacity: 0; }
-        76%, 100% { opacity: 1; }
-      }
+      .note.on { opacity: 1; }
       .cursor {
-        position: absolute; width: 14px; height: 18px; pointer-events: none;
-        z-index: 5;
-        filter: drop-shadow(0 1px 1px #000);
+        position: absolute; left: 160px; top: 8px;
+        width: 14px; height: 18px; pointer-events: none;
         opacity: 0;
+        transition: left 0.45s ease, top 0.45s ease, opacity 0.2s linear;
+        filter: drop-shadow(0 1px 1px #000);
+        z-index: 2;
       }
-      body.play .cursor { animation: cur 8.4s linear both; }
-      @keyframes cur {
-        0% { opacity: 0; left: 210px; top: 210px; }
-        4% { opacity: 1; left: 210px; top: 210px; }
-        10% { left: 58px; top: 196px; }
-        12%, 22% { left: 58px; top: 196px; opacity: 1; }
-        24% { left: 58px; top: 196px; opacity: 0; }
-        28% { left: 70px; top: 188px; opacity: 1; }
-        34%, 100% { left: 70px; top: 188px; opacity: 0.9; }
-      }
+      .cursor.show { opacity: 1; left: 22px; top: 10px; }
+      .cursor.show.gone, .cursor.gone { opacity: 0; }
       .ring {
-        position: absolute; left: 64px; top: 188px;
+        position: absolute; left: 18px; top: 4px;
         width: 28px; height: 28px; border-radius: 50%;
         border: 2px solid #e8b93c;
-        opacity: 0; transform: scale(0.4);
+        opacity: 0; pointer-events: none;
       }
-      body.play .ring { animation: ring 8.4s linear both; }
+      .ring.go { animation: ring 0.55s ease-out both; }
       @keyframes ring {
-        0%, 30% { opacity: 0; transform: scale(0.4); }
-        33% { opacity: 1; transform: scale(0.7); }
-        40% { opacity: 0; transform: scale(1.8); }
-        41%, 100% { opacity: 0; }
+        0% { opacity: 1; transform: scale(0.5); }
+        100% { opacity: 0; transform: scale(1.7); }
       }
-      .tag {
-        position: absolute; right: 16px; top: 16px;
-        font: 600 11px/1 Inter, sans-serif;
-        letter-spacing: 0.14em; text-transform: uppercase;
-        padding: 5px 8px; border: 1px solid #23261e; border-radius: 6px;
-      }
-      .t-click { color: #9aa0a8; }
-      .t-punch { color: #b8ff3c; border-color: #3a4a22; opacity: 0; }
-      body.play .t-click { animation: tclick 8.4s linear both; }
-      body.play .t-punch { animation: tpunch 8.4s linear both; }
-      @keyframes tclick {
-        0%, 26% { opacity: 1; color: #ff8a8a; border-color: #5a2a2a; }
-        30%, 100% { opacity: 0; }
-      }
-      @keyframes tpunch {
-        0%, 28% { opacity: 0; }
-        32%, 100% { opacity: 1; }
-      }
-      svg.pointer { display: block; }
     </style>
   </head>
   <body>
     <div class="stage">
       <div class="top">
-        <div class="pip" aria-hidden="true">P</div>
+        <div class="pip" id="pip" aria-hidden="true">P</div>
         <p class="kicker">Look · live tab · no model</p>
       </div>
       <div class="grid">
         <section class="card portal">
           <p class="label">Vendor portal · already signed in</p>
           <h2>Receiving</h2>
-          <div class="row"><div class="fake"></div><div class="fake"></div></div>
-          <div class="row"><div class="fake"></div><div class="fake" style="flex:0.6"></div></div>
-          <button class="save" type="button" tabindex="-1">Save claim</button>
-          <p class="receipt">Claim saved. Mackerel Queen · herring · 240 stone.</p>
-          <p class="toast">ignored a naked click</p>
-          <span class="tag t-click">el.click()</span>
-          <span class="tag t-punch">agent.punch()</span>
-          <span class="ring"></span>
-          <span class="cursor">
-            <svg class="pointer" width="14" height="18" viewBox="0 0 14 18" fill="none">
-              <path d="M1 1L1 16L5.2 12.2L8.4 17.2L10.6 16L7.5 11.1L13 11.1L1 1Z" fill="#f2f4ea" stroke="#0b0c09"/>
-            </svg>
-          </span>
+          <div class="fields">
+            <div class="fake"></div>
+            <div class="fake"></div>
+            <div class="fake"></div>
+            <div class="fake"></div>
+          </div>
+          <div class="hit">
+            <button class="save" id="save" type="button" tabindex="-1">Save claim</button>
+            <span class="ring" id="ring"></span>
+            <span class="cursor" id="cursor">
+              <svg width="14" height="18" viewBox="0 0 14 18" fill="none">
+                <path d="M1 1L1 16L5.2 12.2L8.4 17.2L10.6 16L7.5 11.1L13 11.1L1 1Z" fill="#f2f4ea" stroke="#0b0c09"/>
+              </svg>
+            </span>
+          </div>
+          <p class="status" id="status"></p>
+          <p class="receipt" id="receipt">Claim saved. Mackerel Queen · herring · 240 stone.</p>
         </section>
         <section class="card">
           <p class="label">Compiled arm</p>
-          <div class="code"><span class="ln1 dim">agent.arm = async () => {</span>
-<span class="ln2 hi">  agent.punch(agent.q("#save-claim"));</span>
-<span class="ln3 ac">  agent.must("#receipt", "receipt");</span>
-<span class="ln4 dim">};</span></div>
-          <p class="note">must the receipt that appeared. Not the button you punched.</p>
+          <div class="code" id="code">
+            <span class="dim" data-ln="1">agent.arm = async () => {</span>
+            <span class="hi" data-ln="2">  agent.punch(agent.q("#save-claim"));</span>
+            <span class="ac" data-ln="3">  agent.must("#receipt", "receipt");</span>
+            <span class="dim" data-ln="4">};</span>
+          </div>
+          <p class="note" id="note">must the receipt that appeared. Not the button you punched.</p>
         </section>
       </div>
     </div>
     <script>
-      document.body.classList.add("play");
+      function beat(ms, fn) { return new Promise(function (ok) { setTimeout(function () { fn(); ok(); }, ms); }); }
+      async function play() {
+        var pip = document.getElementById("pip");
+        var save = document.getElementById("save");
+        var status = document.getElementById("status");
+        var receipt = document.getElementById("receipt");
+        var cursor = document.getElementById("cursor");
+        var ring = document.getElementById("ring");
+        var lines = document.querySelectorAll("#code span");
+        var note = document.getElementById("note");
+        pip.className = "pip";
+        save.className = "save";
+        status.className = "status";
+        status.textContent = "";
+        receipt.className = "receipt";
+        cursor.className = "cursor";
+        ring.className = "ring";
+        note.className = "note";
+        for (var i = 0; i < lines.length; i++) lines[i].classList.remove("on");
+        await beat(350, function () { cursor.classList.add("show"); });
+        await beat(550, function () {
+          status.textContent = "el.click()";
+          status.className = "status bad";
+        });
+        await beat(220, function () { save.classList.add("shake"); });
+        await beat(80, function () { status.textContent = "ignored a naked click"; });
+        await beat(1400, function () {
+          save.classList.remove("shake");
+          status.textContent = "";
+          status.className = "status";
+        });
+        await beat(280, function () {
+          status.textContent = "agent.punch()";
+          status.className = "status good";
+          pip.classList.add("work");
+          ring.classList.add("go");
+          cursor.classList.add("gone");
+        });
+        await beat(420, function () {
+          receipt.classList.add("on");
+          pip.className = "pip ok";
+        });
+        await beat(520, function () { lines[0].classList.add("on"); });
+        await beat(280, function () { lines[1].classList.add("on"); });
+        await beat(280, function () { lines[2].classList.add("on"); });
+        await beat(280, function () { lines[3].classList.add("on"); });
+        await beat(360, function () { note.classList.add("on"); });
+        await beat(1800, function () {});
+      }
+      window.__paClipDone = play();
     </script>
   </body>
 </html>

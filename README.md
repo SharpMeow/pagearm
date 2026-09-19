@@ -4,11 +4,7 @@
 
 Chromium, Firefox, and Safari. One codebase, one desk, one agent, three manifests.
 
-![Install and toolbar P](docs/guide.png)
-
-![How a save becomes a live tab](docs/hotswap.png)
-
-![Click is ignored. Punch paints the receipt. Compile musts #receipt.](docs/look.gif)
+<img src="docs/look.gif" width="800" alt="el.click() is ignored. punch paints the receipt. Compile musts #receipt.">
 
 ```
  ____                     _
@@ -32,27 +28,11 @@ Same hash: just call `arm()` again. You never reinstall. You never re-drag a boo
 
 Say yes to user scripts when your browser offers it. Chromium puts an **Allow User Scripts** toggle on the extension's Details page. Firefox asks the first time you click **P**. Either way it lets the background hand code to a page whose Content Security Policy forbids `eval`. Without it, and on Safari which has no such API at all, strict-CSP sites keep the packed copy and say so in the console.
 
-```
-                    you, tinkering
-                          |
-                          v
-                     +---------+
-                     |  desk   |   GET /agent.js
-                     +----+----+
-                          |
-                          v
-              background worker or event page
-                    /          \
-            hash new?          hash same?
-               |                    |
-               v                    v
-        inject into the tab    agent.arm()
-        MAIN world, every frame
-                          |
-         desk asleep -----+----> packed inject.js still works
-```
+<img src="docs/hotswap.png" width="800" alt="How a save becomes a live tab">
 
 Pin **P** in the toolbar. Green means you are armed. Gold means it is thinking. Red means your `arm()` threw, and the console will tell you why, gently. A little badge is there if you want to flash a count. Hover text is just P. Nobody walking by needs to know what it is.
+
+<img src="docs/guide.png" width="800" alt="Install once, and what toolbar P means">
 
 PageArm uses the PolyForm Small Business License 1.0.0. Use it yourself if you are an individual or a small company. Larger companies need a paid license. Do not ship it as a store listing. See `LICENSE`.
 
@@ -254,7 +234,7 @@ npm start
 
 On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.1:8787](http://127.0.0.1:8787). Stay on that machine. The desk is not a public server, and it does not want to be.
 
-![The desk](docs/desk.png)
+<img src="docs/desk.png" width="800" alt="The desk">
 
 1. Pick your browser on the desk, click **Download**, unzip. Keep that folder around. It is yours now. The desk guesses which browser you are reading it in, and the other two are one click away.
 2. Install the shell the way your browser wants:
@@ -378,7 +358,7 @@ agent.scripts               // the stack this agent was built from, in order
 
 **Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Hitting Record twice does not wipe a take that is already rolling. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s what appeared after the last punch (the receipt, not the button). That arm is for the tab you recorded, not for `/sample.html`.
 
-![Look: record, punch, must what appeared](docs/look.png)
+<img src="docs/look.png" width="800" alt="Look: record, punch, must what appeared">
 
 **Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`): a draft, then a critic pass. **Enhance** writes three drafts in parallel, seeds them with the compiled Look if you recorded one, and a critic merges. On the sample page it then proves, and heals once if it missed. If you just Looked, Enhance uses that live sketch and will not prove on `/sample.html`. No key, but a Look? Enhance still returns the compiled trace. After **Save**, the desk watches `must` from the live tab. Heal uses that miss. Prove on the sample page does not tell you if vendor Save worked.
 

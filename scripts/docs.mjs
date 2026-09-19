@@ -115,7 +115,7 @@ async function shotDesk(chromium, origin) {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({
-      viewport: { width: WIDTH, height: 820 },
+      viewport: { width: WIDTH, height: 720 },
       deviceScaleFactor: SCALE,
     });
     await page.goto(origin + "/", { waitUntil: "networkidle" });
@@ -124,7 +124,9 @@ async function shotDesk(chromium, origin) {
     if (await chip.count()) await chip.first().click();
     await page.waitForTimeout(200);
     const out = join(docs, "desk.png");
-    await page.screenshot({ path: out, type: "png" });
+    const panel = page.locator(".editor-panel");
+    if (await panel.count()) await panel.screenshot({ path: out, type: "png" });
+    else await page.screenshot({ path: out, type: "png" });
     console.log("  desk.png  " + kb(out) + "k");
   } finally {
     await browser.close();
@@ -137,7 +139,7 @@ async function recordLook(chromium) {
   const browser = await chromium.launch({ headless: true });
   let videoPath = "";
   const clipW = 880;
-  const clipH = 460;
+  const clipH = 500;
   try {
     const context = await browser.newContext({
       viewport: { width: clipW, height: clipH },
@@ -147,13 +149,8 @@ async function recordLook(chromium) {
     const page = await context.newPage();
     const url = pathToFileURL(join(src, "clip.html")).href;
     await page.goto(url, { waitUntil: "load" });
-    await page.waitForTimeout(200);
-    await page.evaluate(() => {
-      document.body.classList.remove("play");
-      void document.body.offsetWidth;
-      document.body.classList.add("play");
-    });
-    await page.waitForTimeout(8400);
+    await page.waitForTimeout(150);
+    await page.evaluate(() => window.__paClipDone);
     const vid = page.video();
     await context.close();
     if (vid) videoPath = await vid.path();
