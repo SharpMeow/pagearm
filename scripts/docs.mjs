@@ -139,7 +139,7 @@ async function recordLook(chromium) {
   const browser = await chromium.launch({ headless: true });
   let videoPath = "";
   const clipW = 880;
-  const clipH = 500;
+  const clipH = 520;
   try {
     const context = await browser.newContext({
       viewport: { width: clipW, height: clipH },
@@ -162,7 +162,7 @@ async function recordLook(chromium) {
   const mp4 = join(docs, "look.mp4");
   ffmpeg([
     "-y", "-i", videoPath,
-    "-vf", "fps=12,scale=800:-2:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=72:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5",
+    "-vf", "fps=10,scale=760:-2:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=64:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5",
     "-loop", "0", gif,
   ]);
   ffmpeg([

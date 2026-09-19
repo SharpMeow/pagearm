@@ -1,10 +1,10 @@
 # PageArm
 
-**Inject-and-hot-swap runtime.** Install a thin browser shell once. After that the agent is a URL. You arm the page.
+Install a tiny browser shell once. After that the agent is a URL on your machine, not the files in the zip. You edit, save, and the tab you are already signed into runs it.
 
 Chromium, Firefox, and Safari. One codebase, one desk, one agent, three manifests.
 
-<img src="docs/look.gif" width="800" alt="el.click() is ignored. punch paints the receipt. Compile musts #receipt.">
+<img src="docs/look.gif" width="800" alt="PageArm: install a shell once, punch the live tab, the agent hot-swaps. No reinstall.">
 
 ```
  ____                     _
