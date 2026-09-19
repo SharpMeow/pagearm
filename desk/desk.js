@@ -23,7 +23,6 @@ const askSkipBtn = document.getElementById("ask-skip");
 const jobEl = document.getElementById("job");
 const writeBtn = document.getElementById("write");
 const enhanceBtn = document.getElementById("enhance");
-const forgeBtn = document.getElementById("forge");
 const proveBtn = document.getElementById("prove");
 const healBtn = document.getElementById("heal");
 const authorState = document.getElementById("author-state");
@@ -426,8 +425,9 @@ async function save() {
     }
     stack = data.stack || [];
     saveState.textContent = bound
-      ? "saved to " + bound + " and armed. open or reload a tab."
-      : "saved. open or reload a tab.";
+      ? "saved to " + bound + ". Click P on the tab. The desk scores its must."
+      : "saved. Click P on the tab. The desk scores its must.";
+    startLiveScore();
     loadDrawer().catch(() => {});
   } catch (e) {
     saveState.textContent = "not saved: desk unreachable";
@@ -532,14 +532,43 @@ async function pollAsk() {
   } catch (e) {}
 }
 
+let liveWait = 0;
+let lastLiveError = "";
+let mustPollFast = 0;
+
+function startLiveScore() {
+  liveWait = Date.now();
+  lastLiveError = "";
+  if (mustPollFast) clearInterval(mustPollFast);
+  pollMusts();
+  mustPollFast = setInterval(pollMusts, 800);
+  setTimeout(function () {
+    if (mustPollFast) {
+      clearInterval(mustPollFast);
+      mustPollFast = 0;
+    }
+  }, 20000);
+}
+
 function showMusts(musts) {
-  if (!musts || !musts.length) {
+  const list = liveWait
+    ? (musts || []).filter((m) => (m.at || 0) >= liveWait - 2000)
+    : (musts || []);
+  if (!list.length) {
+    if (liveWait) {
+      mustsEl.hidden = false;
+      mustsEl.textContent = "live tab · waiting for must after Save. Click P.";
+      return;
+    }
     mustsEl.hidden = true;
     mustsEl.textContent = "";
     return;
   }
+  const score = proveScore(list, list.every((m) => m.ok) ? "ok" : "err");
+  lastLiveError = score.ok ? "" : (score.error || "");
   mustsEl.hidden = false;
-  mustsEl.textContent = musts.slice(0, 5).map((m) =>
+  const head = liveWait ? "live tab · " : "";
+  mustsEl.textContent = head + list.slice(0, 5).map((m) =>
     (m.ok ? "ok" : "miss") + " " + (m.note || m.sel || "")
   ).join(" · ");
 }
@@ -636,14 +665,6 @@ async function prove() {
   }
 }
 
-function proveRank(score) {
-  if (!score) return 0;
-  if (score.ok) return 100;
-  const m = /(\d+)\/(\d+)/.exec(score.text || "");
-  if (m && Number(m[2])) return (Number(m[1]) / Number(m[2])) * 50;
-  return 0;
-}
-
 async function enhanceAgent() {
   const job = jobEl.value.trim();
   authorState.textContent = "enhancing… three drafts, then a critic";
@@ -722,58 +743,8 @@ async function writeAgent() {
   }
 }
 
-async function forgeAgent() {
-  const job = jobEl.value.trim();
-  if (!job) {
-    authorState.textContent = "say what the agent should do";
-    jobEl.focus();
-    return;
-  }
-  authorState.textContent = "forging three…";
-  try {
-    const r = await fetch("/api/forge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job }),
-    });
-    const data = await r.json();
-    if (!r.ok || !data.ok) {
-      authorState.textContent = data.error || ("not forged: " + r.status);
-      return;
-    }
-    const variants = data.variants || [];
-    if (!variants.length) {
-      authorState.textContent = "forge wrote nothing that parsed";
-      return;
-    }
-    bound = null;
-    if (data.live) {
-      source.value = variants[0].source || "";
-      saveState.textContent = "unsaved forge";
-      authorState.textContent = "forged " + variants.length + " against the last Look. First is in the editor. Save to arm the tab.";
-      return;
-    }
-    let best = null;
-    for (let i = 0; i < variants.length; i++) {
-      source.value = variants[i].source || "";
-      authorState.textContent = "proving " + (i + 1) + "/" + variants.length + "…";
-      const score = await prove();
-      const rank = proveRank(score);
-      if (!best || rank > best.rank) best = { source: variants[i].source, score: score, rank: rank };
-      if (rank >= 100) break;
-    }
-    source.value = best.source;
-    saveState.textContent = "unsaved forge";
-    authorState.textContent = best.score && best.score.ok
-      ? "forged " + variants.length + ", kept a winner"
-      : "forged " + variants.length + ", none proved clean";
-  } catch (e) {
-    authorState.textContent = "desk unreachable";
-  }
-}
-
 async function healAgent() {
-  let error = lastProveError || "";
+  let error = lastLiveError || lastProveError || "";
   if (!error) {
     try {
       const r = await fetch("/api/must");
@@ -938,7 +909,6 @@ source.addEventListener("keydown", (ev) => {
 saveBtn.addEventListener("click", save);
 enhanceBtn.addEventListener("click", enhanceAgent);
 writeBtn.addEventListener("click", writeAgent);
-forgeBtn.addEventListener("click", forgeAgent);
 proveBtn.addEventListener("click", () => prove());
 healBtn.addEventListener("click", healAgent);
 lookRecordBtn.addEventListener("click", () => setLook(true));

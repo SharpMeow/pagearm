@@ -122,6 +122,7 @@ async function main() {
     await page.keyboard.type("hunter2", { delay: 10 });
     await page.locator("#agree").click();
     await page.locator("#save-claim span").click();
+    await page.waitForTimeout(250);
 
     const recorded = await page.evaluate(() => window.__paLook.filter((m) => m.type === "look"));
     if (!recorded.some((s) => s.kind === "type" && s.sel === "#vessel")) {
@@ -132,6 +133,8 @@ async function main() {
       "typing a field records the last value, even if Save is immediate");
     ok(recorded.some((s) => s.kind === "punch" && s.sel === "#save-claim"),
       "a click on the inner span records the button");
+    ok(recorded.some((s) => s.kind === "seen" && s.sel === "#receipt"),
+      "and the receipt that appeared after Save is a seen");
     ok(!recorded.some((s) => s.sel === "#secret" || (s.text && String(s.text).indexOf("hunter2") >= 0)),
       "a password field is never written down");
     ok(recorded.some((s) => s.kind === "punch" && s.sel === "#agree"),
@@ -144,7 +147,8 @@ async function main() {
     const source = compileLook(recorded);
     ok(/type\(agent\.q\("#vessel"\), "Mackerel Queen"\)/.test(source), "compile keeps the vessel");
     ok(/punch\(agent\.q\("#save-claim"\)\)/.test(source), "compile punches Save");
-    ok(/must\("#save-claim"/.test(source), "compile musts Save");
+    ok(/must\("#receipt"/.test(source), "compile musts the receipt, not the button");
+    ok(!/must\("#save-claim"/.test(source), "and does not must Save");
     ok(!/hunter2/.test(source), "compile has no password");
 
     console.log("look-sim replay");
