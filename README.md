@@ -8,7 +8,7 @@ Chromium, Firefox, and Safari. One codebase, one desk, one agent, three manifest
 
 ![How a save becomes a live tab](docs/hotswap.png)
 
-![Look types a claim, punches Save, and musts the receipt](docs/look.gif)
+![Click is ignored. Punch paints the receipt. Compile musts #receipt.](docs/look.gif)
 
 ```
  ____                     _
