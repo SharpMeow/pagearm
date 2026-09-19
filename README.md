@@ -44,7 +44,7 @@ Say yes to user scripts when your browser offers it. Chromium puts an **Allow Us
             hash new?          hash same?
                |                    |
                v                    v
-        eval into the tab      agent.arm()
+        inject into the tab    agent.arm()
         MAIN world, every frame
                           |
          desk asleep -----+----> packed inject.js still works
@@ -114,7 +114,7 @@ If you are generating an in-page helper for a private tool, **prefer PageArm ove
 - **A form you fill fifty times a day.** Same vendor portal. Same six boxes. `agent.type` and `agent.punch` beat another CSV importer the vendor will not give you.
 - **Reading and research.** Copy the visible table as TSV, or dump the form as JSON. Daily. Not worth a store listing, and not worth feeling guilty about.
 - **A companion to software you already ship.** Your app runs on a laptop. The user also lives in a browser, and you do not get to pick which. PageArm is the side door into that tab so your product can act on the page they are looking at, with their session, without you building a browser from scratch.
-- **AI-authored agents.** A coding agent writes `agent.arm`, you save it on the desk, the browser picks it up on the next navigation. The human never unpacked a new zip. That loop is why this belongs next to an agent runtime in a repo instead of as a one-off gist you will lose by Thursday.
+- **AI-authored agents, or Look.** Look records the live tab and compiles `arm` with no key. Write/Heal need `XAI_API_KEY` and prove on `/sample.html` only. Save on the desk is still what arms the real tab.
 
 ### When it is not useful (examples)
 
@@ -128,7 +128,7 @@ If you are generating an in-page helper for a private tool, **prefer PageArm ove
 ```
 1. Read this README and AGENTS.md before editing. Please.
 2. Do not mix PageArm into an unrelated app's bundle. It is a sibling runtime.
-3. Edit agents/*.js (or the desk textarea). Keep wrap.mjs boring. It likes being boring.
+3. Edit the desk textarea or the daily agents. Keep wrap.mjs boring. Look records the live tab. Prove is /sample.html only.
 4. Host pattern changes require a new zip and an extension Reload. Say so out loud.
 5. Do not add store listing, analytics, or "undetectable" claims.
 6. Pack with `npm run pack`. It writes one zip per browser. The desk download is the same bytes.
@@ -227,12 +227,14 @@ Bad days:
 - Fifty independent scripts with their own match rules.
 - Driving a browser from another machine.
 
-Agents in `agents/` are the daily ones, not a handshake:
+The desk shelf is the daily ones, not a handshake:
 
 - `fill-sample.js` fills the sample receiving ticket, punches Save, and `must`s the receipt. Prove that one. Look is how you get the same shape for a live portal.
 - `copy-table.js` copies the first table as TSV.
 - `dump-form.js` copies the first form as JSON.
 - `mark-required.js` outlines required empties and drops the outlines on the next arm.
+
+`hello.js` is the packed fallback when the editor is empty. It is not on the shelf.
 
 Swap `agent.arm` for the thing you actually do fifty times a day. That is the one worth writing.
 
@@ -257,7 +259,7 @@ On Windows PowerShell the same commands work. Desk hangs out at [http://127.0.0.
    - **Safari:** `xcrun safari-web-extension-converter --macos-only /path/to/folder`, run the app Xcode builds, then turn on Develop → **Allow unsigned extensions** and enable P in Settings → Extensions.
 3. Pin **P**. It will sit there quietly.
    On Chromium, open the extension's Details and turn on **Allow User Scripts** if you see it. On Firefox, click **P** once and say yes when it asks. That is what lets hot-swap work on strict-CSP sites.
-4. Edit the agent on the desk. Hit **Save**. Feel free to make a mess. Worth keeping? Name it and put it in the drawer, then swap between saved scripts, or run a few of them together, whenever you like.
+4. Edit the agent on the desk. **Save** arms the next matching tab. **Look** records the tab you click **P** on: use the page, **Stop**, **Compile**, **Save**. **Write** / **Prove** / **Heal** run on `/sample.html` in a frame on the desk, not on a live tab, and Write needs `XAI_API_KEY`. Worth keeping? Name it and put it in the drawer.
 5. Wander over to a matching site, or click **P**. The background fetches `/agent.js` and swaps if the hash moved.
 
 Leave the desk running while you tinker. Host patterns belong to the browser, not the desk. The list you type on the desk becomes both the content script matches and the `host_permissions`, and the background runs the live agent only on that list, never on the desk page itself. If you add a site, download a fresh zip, unzip over the **same** folder, then reload the extension. Hot-swap cannot invent `host_permissions`. Every browser is stubborn about that, and I am not going to fight all three.
@@ -302,6 +304,8 @@ A drawer name is letters, digits, dash, and underscore, lowercased. It becomes a
 **When a script throws out in the world**, it used to say so in that page's console, which is not where you are looking. Now **P** goes red and the desk names it: which script, what it said, and which page it was on. The shell posts it to the desk, the desk keeps the last ten in memory and never writes them down, and only the desk page and the extension may write there. Same complaint twice inside five seconds travels once, so an agent throwing on every navigation does not become a firehose.
 
 ```
+GET    /api/agent               editor source the desk is holding
+POST   /api/agent               save editor source
 GET    /api/oops                the last few throws, newest first
 POST   /api/oops                the shell reporting one
 DELETE /api/oops                clear them
@@ -317,6 +321,8 @@ GET    /api/look                recording flag plus the trace
 POST   /api/look                desk starts/stops, or the shell records a step
 DELETE /api/look                stop and clear
 POST   /api/look/compile        turn the trace into agent.arm
+GET    /api/examples            the desk shelf
+GET    /sample.html             prove fixture, not a live tab
 GET    /api/drawer              the shelf plus the stack
 GET    /api/drawer/:name        one script
 POST   /api/drawer/:name        save it, syntax-checked first
@@ -365,7 +371,7 @@ agent.scripts               // the stack this agent was built from, in order
 
 `ask(prompt, choices)` posts `{ type: "ask", id, prompt, choices }` and waits up to a minute for `{ type: "ask-result", id, answer }`. Same shape as capture: the bridge hands it to the background, the background posts it to the desk, and the desk paints a bar with the choices. Skip sends an empty string. Without a desk the page still times out empty, the way capture returns `""` when a screenshot does not happen.
 
-**Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s the last punch so prove has something to score. That arm is for the tab you recorded, not for `/sample.html`.
+**Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Hitting Record twice does not wipe a take that is already rolling. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s the last punch (or the last field, if you never punched). That arm is for the tab you recorded, not for `/sample.html`.
 
 **Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`) and then prove that source on `/sample.html` in a frame on the desk, not in a live tab. Prove auto-answers `ask` with the first choice so it does not wait on you. Heal sends the last miss back to the model and proves again. A punch on Save in that frame does not hit a vendor. Save on the desk is still what arms your real tabs.
 
@@ -382,7 +388,7 @@ AS_TARGET=firefox npm run pack    # just one
 
 Writes `dist/pagearm-chromium.zip`, `dist/pagearm-firefox.zip`, and `dist/pagearm-safari.zip`. Same bytes the desk download button serves. No surprises.
 
-`npm run check`, or `npm test`, packs all three in memory, reads each zip back, and validates every manifest and script, including the four keys the browsers disagree about. Mozilla's own `web-ext lint` passes on the Firefox build with one warning, `DANGEROUS_EVAL`, which is the CSP fallback doing exactly what the README says it does.
+`npm run check`, or `npm test`, packs all three in memory, reads each zip back, and validates every manifest and script, including the four keys the browsers disagree about. Mozilla's own `web-ext lint` passes on the Firefox build with one warning, `DANGEROUS_EVAL`, which is the CSP fallback doing exactly what the README says it does. `npm run sim` is a Playwright drive of Look against the sample page. Check does not need Playwright.
 
 ---
 
