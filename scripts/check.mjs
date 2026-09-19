@@ -495,7 +495,23 @@ try {
       body: JSON.stringify({ job: "fill the claim" }),
     });
     ok(noForge.status === 503, "forge says so when there is no key");
+    const noEnhance = await desk("/api/enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: "fill the claim" }),
+    });
+    ok(noEnhance.status === 503, "enhance says so when there is no key");
   }
+  ok((await desk("/api/enhance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job: "" }),
+  })).status === 400, "enhance without a job or a look is a 400");
+  ok((await desk("/api/enhance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ job: "fill it" }),
+  })).status === 403, "a cross-site page cannot enhance");
   ok((await desk("/api/forge", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -550,6 +566,16 @@ try {
   });
   const sketched = await (await desk("/api/look")).json();
   ok(sketched.sketch && sketched.sketch[0] && sketched.sketch[0].sel === "#vessel", "the shell may sketch the live controls");
+  if (!process.env.XAI_API_KEY) {
+    const polished = await desk("/api/enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: "" }),
+    });
+    const polishedBody = await polished.json();
+    ok(polished.status === 200 && /agent\.arm/.test(polishedBody.source || ""),
+      "enhance without a key still returns the compiled look");
+  }
   await desk("/api/look", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

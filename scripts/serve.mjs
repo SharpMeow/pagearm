@@ -237,6 +237,15 @@ function livePage() {
   return lines.join("\n").slice(0, 4000);
 }
 
+const TRACE_JOB = "Replay the live trace. Punch controls that might ignore a naked click. must the success node, not the button, unless that is all you have.";
+
+function jobOrTrace(job) {
+  const j = String(job || "").trim();
+  if (j) return j;
+  if ((lookState.steps && lookState.steps.length) || (lookState.sketch && lookState.sketch.length)) return TRACE_JOB;
+  return "";
+}
+
 const AGENT_API = [
   "You write PageArm agent scripts. A script assigns agent.arm.",
   "",
@@ -352,6 +361,82 @@ export function compileError(source) {
     const line = typeof source === "string" ? brokenLine(e, source) : 0;
     return line ? msg + " (line " + line + ")" : msg;
   }
+}
+
+function cleanSource(text) {
+  const source = stripFence(text);
+  if (!source || compileError(source)) return "";
+  return source;
+}
+
+async function draftArms(job, page) {
+  const briefs = [
+    "Write agent.arm for this job. Prefer punch over click. Include must on the success condition.",
+    "Write a second, different agent.arm for the same job. Try another selector if one exists. Still punch stubborn buttons.",
+    "Write a third, short agent.arm for the same job. Punch Save-like controls. must the receipt or success node.",
+  ];
+  const heats = [0.2, 0.55, 0.9];
+  const results = await Promise.all(briefs.map((brief, i) => chatXai(
+    [
+      { role: "system", content: AGENT_API },
+      { role: "user", content: brief + "\n\nJob:\n" + job + "\n\nPage sketch:\n" + page },
+    ],
+    900,
+    heats[i],
+  )));
+  const variants = [];
+  let lastErr = null;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (!r.ok) {
+      lastErr = r;
+      continue;
+    }
+    const source = cleanSource(r.text);
+    if (source) variants.push({ source });
+  }
+  if (lookState.steps && lookState.steps.length) {
+    const looked = compileLook(lookState.steps);
+    if (!compileError(looked)) variants.unshift({ source: looked, seed: "look" });
+  }
+  if (!variants.length) return lastErr || { ok: false, status: 502, error: "wrote nothing that parsed" };
+  return { ok: true, variants };
+}
+
+async function criticMerge(job, page, variants) {
+  const listed = variants.map((v, i) => "// draft " + (i + 1) + (v.seed ? " (" + v.seed + ")" : "") + "\n" + v.source).join("\n\n");
+  const result = await chatXai(
+    [
+      {
+        role: "system",
+        content: AGENT_API + "\nYou pick or merge these drafts into ONE better agent.arm. Punch not click. must the success node, not the button. Return ONLY the JavaScript.",
+      },
+      { role: "user", content: "Job:\n" + job + "\n\nPage sketch:\n" + page + "\n\nDrafts:\n" + listed },
+    ],
+    1400,
+    0.1,
+  );
+  if (!result.ok) return { ok: true, source: variants[0].source, reason: "critic skipped, kept first draft" };
+  const source = cleanSource(result.text);
+  if (!source) return { ok: true, source: variants[0].source, reason: "critic did not parse, kept first draft" };
+  return { ok: true, source, reason: "critic merged " + variants.length };
+}
+
+async function criticPatch(job, page, source) {
+  const result = await chatXai(
+    [
+      {
+        role: "system",
+        content: AGENT_API + "\nImprove this arm. Punch not click. must the success node. Idempotent. Return ONLY the JavaScript.",
+      },
+      { role: "user", content: "Job:\n" + job + "\n\nPage sketch:\n" + page + "\n\nDraft:\n" + source },
+    ],
+    1200,
+    0.15,
+  );
+  if (!result.ok) return { ok: true, source };
+  const next = cleanSource(result.text);
+  return { ok: true, source: next || source };
 }
 
 async function readBody(req) {
@@ -731,7 +816,7 @@ async function handle(req, res) {
       send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
       return;
     }
-    const job = String(body.job || "").trim();
+    const job = jobOrTrace(body.job);
     if (!job) {
       send(res, 400, JSON.stringify({ ok: false, error: "say what the agent should do" }), "application/json; charset=utf-8");
       return;
@@ -749,7 +834,13 @@ async function handle(req, res) {
       send(res, result.status || 502, JSON.stringify({ ok: false, error: result.error }), "application/json; charset=utf-8");
       return;
     }
-    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text), live }), "application/json; charset=utf-8");
+    const draft = stripFence(result.text);
+    if (!draft) {
+      send(res, 502, JSON.stringify({ ok: false, error: "wrote nothing" }), "application/json; charset=utf-8");
+      return;
+    }
+    const patched = await criticPatch(job, page, draft);
+    send(res, 200, JSON.stringify({ ok: true, source: patched.source, live }), "application/json; charset=utf-8");
     return;
   }
 
@@ -800,46 +891,57 @@ async function handle(req, res) {
       send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
       return;
     }
-    const job = String(body.job || "").trim();
+    const job = jobOrTrace(body.job);
     if (!job) {
       send(res, 400, JSON.stringify({ ok: false, error: "say what the agent should do" }), "application/json; charset=utf-8");
       return;
     }
     const page = String(body.page || livePage()).slice(0, 4000);
     const live = page !== SAMPLE_SKETCH;
-    const briefs = [
-      "Write agent.arm for this job. Prefer punch over click. Include must on the success condition.",
-      "Write a second, different agent.arm for the same job. Try another selector if one exists. Still punch stubborn buttons.",
-      "Write a third, short agent.arm for the same job. Punch Save-like controls. must the receipt or success node.",
-    ];
-    const heats = [0.2, 0.55, 0.9];
-    const results = await Promise.all(briefs.map((brief, i) => chatXai(
-      [
-        { role: "system", content: AGENT_API },
-        { role: "user", content: brief + "\n\nJob:\n" + job + "\n\nPage sketch:\n" + page },
-      ],
-      900,
-      heats[i],
-    )));
-    const variants = [];
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      if (!r.ok) {
-        if (!variants.length && i === results.length - 1) {
-          send(res, r.status || 502, JSON.stringify({ ok: false, error: r.error }), "application/json; charset=utf-8");
-          return;
-        }
-        continue;
-      }
-      const source = stripFence(r.text);
-      if (!source || compileError(source)) continue;
-      variants.push({ source });
-    }
-    if (!variants.length) {
-      send(res, 502, JSON.stringify({ ok: false, error: "forge wrote nothing that parsed" }), "application/json; charset=utf-8");
+    const drafted = await draftArms(job, page);
+    if (!drafted.ok) {
+      send(res, drafted.status || 502, JSON.stringify({ ok: false, error: drafted.error }), "application/json; charset=utf-8");
       return;
     }
-    send(res, 200, JSON.stringify({ ok: true, variants, live }), "application/json; charset=utf-8");
+    send(res, 200, JSON.stringify({ ok: true, variants: drafted.variants, live }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/enhance" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may enhance");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const job = jobOrTrace(body.job);
+    if (!job) {
+      send(res, 400, JSON.stringify({ ok: false, error: "say what the agent should do, or Look first" }), "application/json; charset=utf-8");
+      return;
+    }
+    const page = String(body.page || livePage()).slice(0, 4000);
+    const live = page !== SAMPLE_SKETCH;
+    const drafted = await draftArms(job, page);
+    if (!drafted.ok) {
+      send(res, drafted.status || 502, JSON.stringify({ ok: false, error: drafted.error }), "application/json; charset=utf-8");
+      return;
+    }
+    const variants = drafted.variants.slice();
+    const editor = String(body.source || "").trim();
+    if (editor && !compileError(editor)) variants.unshift({ source: editor, seed: "editor" });
+    const merged = await criticMerge(job, page, variants);
+    send(res, 200, JSON.stringify({
+      ok: true,
+      source: merged.source,
+      reason: merged.reason || "",
+      drafts: variants.length,
+      live,
+    }), "application/json; charset=utf-8");
     return;
   }
 
