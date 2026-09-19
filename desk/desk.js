@@ -22,6 +22,7 @@ const askChoicesEl = document.getElementById("ask-choices");
 const askSkipBtn = document.getElementById("ask-skip");
 const jobEl = document.getElementById("job");
 const writeBtn = document.getElementById("write");
+const enhanceBtn = document.getElementById("enhance");
 const forgeBtn = document.getElementById("forge");
 const proveBtn = document.getElementById("prove");
 const healBtn = document.getElementById("heal");
@@ -643,6 +644,50 @@ function proveRank(score) {
   return 0;
 }
 
+async function enhanceAgent() {
+  const job = jobEl.value.trim();
+  authorState.textContent = "enhancing… three drafts, then a critic";
+  try {
+    const r = await fetch("/api/enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job, source: source.value.trim() }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      authorState.textContent = data.error || ("not enhanced: " + r.status);
+      return;
+    }
+    source.value = data.source || "";
+    bound = null;
+    saveState.textContent = "unsaved enhance";
+    const drafts = data.drafts ? data.drafts + " drafts" : "merged";
+    if (data.live) {
+      authorState.textContent = "enhanced against Look (" + drafts + "). Save to arm the tab. Prove is the sample page, not that tab.";
+      return;
+    }
+    authorState.textContent = "enhanced (" + drafts + "). proving…";
+    let score = await prove();
+    if (score && !score.ok && score.error) {
+      authorState.textContent = "missed. healing…";
+      const h = await fetch("/api/heal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: source.value, error: score.error }),
+      });
+      const healed = await h.json();
+      if (h.ok && healed.ok && healed.source) {
+        source.value = healed.source;
+        authorState.textContent = "healed. proving again…";
+        score = await prove();
+      }
+    }
+    authorState.textContent = score && score.ok ? "enhanced, prove ok" : "enhanced, prove missed";
+  } catch (e) {
+    authorState.textContent = "desk unreachable";
+  }
+}
+
 async function writeAgent() {
   const job = jobEl.value.trim();
   if (!job) {
@@ -891,6 +936,7 @@ source.addEventListener("keydown", (ev) => {
 });
 
 saveBtn.addEventListener("click", save);
+enhanceBtn.addEventListener("click", enhanceAgent);
 writeBtn.addEventListener("click", writeAgent);
 forgeBtn.addEventListener("click", forgeAgent);
 proveBtn.addEventListener("click", () => prove());
@@ -902,7 +948,7 @@ askSkipBtn.addEventListener("click", () => answerAsk(""));
 jobEl.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter") {
     ev.preventDefault();
-    writeAgent();
+    enhanceAgent();
   }
 });
 drawerSaveBtn.addEventListener("click", () => putInDrawer(false));
