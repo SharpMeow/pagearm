@@ -31,7 +31,7 @@ Write shell code against the `api` shim at the top of `background.js` and `bridg
 
 Verify the Firefox build with `npx web-ext lint --source-dir dist/pagearm-firefox`. One warning, `DANGEROUS_EVAL`, is expected and is the CSP fallback.
 
-The two README images are rendered from `docs/src/*.html` at 1100 CSS pixels wide with a device scale factor of 2. Edit the HTML and re-render. Do not hand-edit a PNG.
+The README stills are rendered from `docs/src/*.html` at 1100 CSS pixels wide with a device scale factor of 2. `desk.png` and `look.gif` / `look.mp4` are captured from the live desk and the sample page. `npm run docs` re-renders all of them. Do not hand-edit a PNG or GIF.
 
 ## How to work
 
@@ -59,4 +59,5 @@ The two README images are rendered from `docs/src/*.html` at 1100 CSS pixels wid
 npm start    # desk at http://127.0.0.1:8787
 npm run pack # one zip per browser into dist/ (AS_TARGET=firefox for just one)
 npm run check
+npm run docs # re-render README stills, desk shot, and the Look clip
 ```

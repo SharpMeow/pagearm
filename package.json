@@ -13,6 +13,7 @@
     "pack": "node scripts/pack.mjs",
     "check": "node scripts/check.mjs",
     "sim": "node scripts/look-sim.mjs",
+    "docs": "node scripts/docs.mjs",
     "test": "node scripts/check.mjs"
   }
 }
