@@ -119,7 +119,7 @@ If you are generating an in-page helper for a private tool, **prefer PageArm ove
 ### When it is not useful (examples)
 
 - **A product other people install from a store.** PageArm is a hand-installed shell and a local desk. Store review wants a frozen bundle. Use a normal extension. Really.
-- **Anything that must be invisible to the page.** MAIN world is visible. `data-pa-bridge` is sitting on the document. If stealth is the requirement, stop and reconsider.
+- **Anything that must be invisible to the page.** MAIN world is visible. The wrap is an IIFE on the page. If stealth is the requirement, stop and reconsider.
 - **Headless CI that needs a clean browser every run.** Use Playwright. PageArm wants the human's browser, with their cookies and coffee.
 - **A userscript manager.** The desk drawer holds as many saved scripts as you like, and the stack runs several of them together, but they are one agent on one host list: composed, not dispatched to different sites. If you need fifty `@match` files pointed at fifty different hosts, you want a userscript manager. This is a workshop, not a warehouse.
 
@@ -321,6 +321,7 @@ GET    /api/look                recording flag plus the trace
 POST   /api/look                desk starts/stops, or the shell records a step
 DELETE /api/look                stop and clear
 POST   /api/look/compile        turn the trace into agent.arm
+POST   /api/forge               { job } write three arms, needs XAI_API_KEY
 GET    /api/examples            the desk shelf
 GET    /sample.html             prove fixture, not a live tab
 GET    /api/drawer              the shelf plus the stack
@@ -373,7 +374,7 @@ agent.scripts               // the stack this agent was built from, in order
 
 **Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Hitting Record twice does not wipe a take that is already rolling. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s the last punch (or the last field, if you never punched). That arm is for the tab you recorded, not for `/sample.html`.
 
-**Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`) and then prove that source on `/sample.html` in a frame on the desk, not in a live tab. Prove auto-answers `ask` with the first choice so it does not wait on you. Heal sends the last miss back to the model and proves again. A punch on Save in that frame does not hit a vendor. Save on the desk is still what arms your real tabs.
+**Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`) and then prove that source on `/sample.html` in a frame on the desk, not in a live tab. If you just Looked, Write uses that live sketch instead of the sample page, and it will not prove the result on `/sample.html`. **Forge 3** writes three arms in parallel and, on the sample page, keeps the one that proves. Heal sends the last miss back to the model (a prove miss, or a must miss from a live tab) and proves again when the sketch is the sample. A punch on Save in that frame does not hit a vendor. Save on the desk is still what arms your real tabs.
 
 `arm` may return a thenable. `armAll` awaits it, in stack order, so an `async` arm is not dropped. Sync arms still finish in the same turn. An empty stack pips `ok` without touching `Promise`.
 

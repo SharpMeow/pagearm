@@ -187,7 +187,7 @@ let mustLog = [];
 const MAX_ASK_ANSWERS = 10;
 let askState = { pending: null, answers: {} };
 const MAX_LOOK = 200;
-let lookState = { recording: false, steps: [] };
+let lookState = { recording: false, steps: [], sketch: [] };
 
 function clamp(value, max) {
   return String(value === undefined || value === null ? "" : value).slice(0, max);
@@ -214,6 +214,28 @@ const SAMPLE_SKETCH = [
   "#paid is the till receipt",
   "#clerk-log",
 ].join("\n");
+
+function livePage() {
+  const lines = [];
+  const steps = lookState.steps || [];
+  const sketch = lookState.sketch || [];
+  if (steps.length) {
+    lines.push("LIVE TRACE (what the human just did on the real tab):");
+    steps.slice(-80).forEach((s) => {
+      if (s.kind === "type") lines.push("type " + s.sel + " = " + JSON.stringify(s.text || ""));
+      else lines.push("punch " + s.sel);
+    });
+  }
+  if (sketch.length) {
+    lines.push("LIVE CONTROLS:");
+    sketch.slice(0, 80).forEach((n) => {
+      lines.push([n.sel, n.tag, n.name && ("name=" + n.name), n.text && JSON.stringify(n.text)].filter(Boolean).join(" "));
+    });
+  }
+  if (!lines.length) return SAMPLE_SKETCH;
+  lines.push("Write against this live tab. Do not use sample-page ids unless they appear above.");
+  return lines.join("\n").slice(0, 4000);
+}
 
 const AGENT_API = [
   "You write PageArm agent scripts. A script assigns agent.arm.",
@@ -247,7 +269,7 @@ function stripFence(text) {
   return (m ? m[1] : String(text || "")).trim();
 }
 
-async function chatXai(messages, maxTokens) {
+async function chatXai(messages, maxTokens, temperature) {
   const key = process.env.XAI_API_KEY;
   if (!key) return { ok: false, status: 503, error: "set XAI_API_KEY to let the desk write" };
   const r = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -260,7 +282,7 @@ async function chatXai(messages, maxTokens) {
       model: "grok-4.5",
       messages,
       max_tokens: maxTokens || 900,
-      temperature: 0.2,
+      temperature: temperature == null ? 0.2 : temperature,
     }),
   });
   if (!r.ok) return { ok: false, status: 502, error: "xAI API error " + r.status };
@@ -714,7 +736,8 @@ async function handle(req, res) {
       send(res, 400, JSON.stringify({ ok: false, error: "say what the agent should do" }), "application/json; charset=utf-8");
       return;
     }
-    const page = String(body.page || SAMPLE_SKETCH).slice(0, 4000);
+    const page = String(body.page || livePage()).slice(0, 4000);
+    const live = page !== SAMPLE_SKETCH;
     const result = await chatXai(
       [
         { role: "system", content: AGENT_API },
@@ -726,7 +749,7 @@ async function handle(req, res) {
       send(res, result.status || 502, JSON.stringify({ ok: false, error: result.error }), "application/json; charset=utf-8");
       return;
     }
-    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text) }), "application/json; charset=utf-8");
+    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text), live }), "application/json; charset=utf-8");
     return;
   }
 
@@ -748,7 +771,8 @@ async function handle(req, res) {
       send(res, 400, JSON.stringify({ ok: false, error: "need the script and what went wrong" }), "application/json; charset=utf-8");
       return;
     }
-    const page = String(body.page || SAMPLE_SKETCH).slice(0, 4000);
+    const page = String(body.page || livePage()).slice(0, 4000);
+    const live = page !== SAMPLE_SKETCH;
     const result = await chatXai(
       [
         { role: "system", content: AGENT_API + "\nPatch the script so the error stops. Keep the same job." },
@@ -760,13 +784,73 @@ async function handle(req, res) {
       send(res, result.status || 502, JSON.stringify({ ok: false, error: result.error }), "application/json; charset=utf-8");
       return;
     }
-    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text) }), "application/json; charset=utf-8");
+    send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text), live }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/forge" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may forge");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const job = String(body.job || "").trim();
+    if (!job) {
+      send(res, 400, JSON.stringify({ ok: false, error: "say what the agent should do" }), "application/json; charset=utf-8");
+      return;
+    }
+    const page = String(body.page || livePage()).slice(0, 4000);
+    const live = page !== SAMPLE_SKETCH;
+    const briefs = [
+      "Write agent.arm for this job. Prefer punch over click. Include must on the success condition.",
+      "Write a second, different agent.arm for the same job. Try another selector if one exists. Still punch stubborn buttons.",
+      "Write a third, short agent.arm for the same job. Punch Save-like controls. must the receipt or success node.",
+    ];
+    const heats = [0.2, 0.55, 0.9];
+    const results = await Promise.all(briefs.map((brief, i) => chatXai(
+      [
+        { role: "system", content: AGENT_API },
+        { role: "user", content: brief + "\n\nJob:\n" + job + "\n\nPage sketch:\n" + page },
+      ],
+      900,
+      heats[i],
+    )));
+    const variants = [];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (!r.ok) {
+        if (!variants.length && i === results.length - 1) {
+          send(res, r.status || 502, JSON.stringify({ ok: false, error: r.error }), "application/json; charset=utf-8");
+          return;
+        }
+        continue;
+      }
+      const source = stripFence(r.text);
+      if (!source || compileError(source)) continue;
+      variants.push({ source });
+    }
+    if (!variants.length) {
+      send(res, 502, JSON.stringify({ ok: false, error: "forge wrote nothing that parsed" }), "application/json; charset=utf-8");
+      return;
+    }
+    send(res, 200, JSON.stringify({ ok: true, variants, live }), "application/json; charset=utf-8");
     return;
   }
 
   if (url.pathname === "/api/look") {
     if (req.method === "GET") {
-      send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
+      send(res, 200, JSON.stringify({
+        recording: lookState.recording,
+        steps: lookState.steps,
+        sketch: lookState.sketch,
+        live: !!(lookState.steps.length || (lookState.sketch && lookState.sketch.length)),
+      }), "application/json; charset=utf-8");
       return;
     }
     if (req.method === "DELETE") {
@@ -774,7 +858,7 @@ async function handle(req, res) {
         send(res, 403, "only the desk may clear that");
         return;
       }
-      lookState = { recording: false, steps: [] };
+      lookState = { recording: false, steps: [], sketch: [] };
       send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
       return;
     }
@@ -795,13 +879,26 @@ async function handle(req, res) {
         return;
       }
       const rec = !!body.recording;
-      if (rec && !lookState.recording) lookState.steps = [];
+      if (rec && !lookState.recording) {
+        lookState.steps = [];
+        lookState.sketch = [];
+      }
       lookState.recording = rec;
       send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
       return;
     }
     if (!fromShell(req)) {
       send(res, 403, "only the shell may record");
+      return;
+    }
+    if (body.kind === "sketch" || Array.isArray(body.nodes)) {
+      lookState.sketch = (Array.isArray(body.nodes) ? body.nodes : []).slice(0, 80).map((n) => ({
+        sel: clamp(n && n.sel, 200),
+        tag: clamp(n && n.tag, 20),
+        name: clamp(n && n.name, 80),
+        text: clamp(n && n.text, 40),
+      })).filter((n) => n.sel);
+      send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
       return;
     }
     const kind = body.kind === "type" ? "type" : "punch";

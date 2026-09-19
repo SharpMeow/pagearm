@@ -8,10 +8,6 @@
 var api = (typeof browser !== "undefined" && browser.runtime) ? browser : chrome;
 var PROMISED = typeof browser !== "undefined" && !!browser.runtime;
 
-try {
-  document.documentElement.setAttribute("data-pa-bridge", "1");
-} catch (e0) {}
-
 function send(msg, cb) {
   try {
     if (PROMISED) {
@@ -194,12 +190,49 @@ function onInput(ev) {
   typeTimer = setTimeout(flushType, 180);
 }
 
+function sketch() {
+  var nodes = [];
+  var seen = {};
+  function add(el) {
+    if (!el || !el.tagName) return;
+    var tag = el.tagName.toLowerCase();
+    var type = String(el.type || "").toLowerCase();
+    if (type === "password" || type === "hidden" || type === "file") return;
+    var sel = cssPath(el);
+    if (!sel || seen[sel]) return;
+    seen[sel] = 1;
+    var text = String(el.innerText || el.value || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    var name = "";
+    try { name = (el.getAttribute && el.getAttribute("name")) || ""; } catch (eN) {}
+    nodes.push({ sel: sel, tag: tag, name: name, text: text });
+  }
+  function walk(root) {
+    if (!root || !root.querySelectorAll) return;
+    var list = [];
+    try { list = root.querySelectorAll("button, a, input, select, textarea, [role=button], [id]"); } catch (e) {}
+    for (var i = 0; i < list.length && nodes.length < 80; i++) add(list[i]);
+    var all = [];
+    try { all = root.querySelectorAll("*"); } catch (e2) {}
+    for (var j = 0; j < all.length && nodes.length < 80; j++) {
+      if (all[j].shadowRoot) walk(all[j].shadowRoot);
+    }
+  }
+  walk(document);
+  return nodes;
+}
+
+function sendSketch() {
+  var nodes = sketch();
+  if (nodes.length) send({ type: "look", kind: "sketch", nodes: nodes });
+}
+
 function startLook() {
   if (looking) return;
   looking = true;
   document.addEventListener("pointerdown", onPointer, true);
   document.addEventListener("input", onInput, true);
   document.addEventListener("change", onInput, true);
+  sendSketch();
 }
 
 function stopLook() {
@@ -210,6 +243,7 @@ function stopLook() {
   document.removeEventListener("change", onInput, true);
   if (typeTimer) clearTimeout(typeTimer);
   flushType();
+  sendSketch();
 }
 
 try {

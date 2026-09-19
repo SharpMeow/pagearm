@@ -22,6 +22,7 @@ const askChoicesEl = document.getElementById("ask-choices");
 const askSkipBtn = document.getElementById("ask-skip");
 const jobEl = document.getElementById("job");
 const writeBtn = document.getElementById("write");
+const forgeBtn = document.getElementById("forge");
 const proveBtn = document.getElementById("prove");
 const healBtn = document.getElementById("heal");
 const authorState = document.getElementById("author-state");
@@ -634,6 +635,14 @@ async function prove() {
   }
 }
 
+function proveRank(score) {
+  if (!score) return 0;
+  if (score.ok) return 100;
+  const m = /(\d+)\/(\d+)/.exec(score.text || "");
+  if (m && Number(m[2])) return (Number(m[1]) / Number(m[2])) * 50;
+  return 0;
+}
+
 async function writeAgent() {
   const job = jobEl.value.trim();
   if (!job) {
@@ -656,6 +665,10 @@ async function writeAgent() {
     source.value = data.source || "";
     bound = null;
     saveState.textContent = "unsaved write";
+    if (data.live) {
+      authorState.textContent = "wrote against the last Look. Save to arm the tab. Prove is the sample page, not that tab.";
+      return;
+    }
     authorState.textContent = "wrote. proving…";
     const score = await prove();
     authorState.textContent = score && score.ok ? "wrote, prove ok" : "wrote, prove missed";
@@ -664,14 +677,73 @@ async function writeAgent() {
   }
 }
 
+async function forgeAgent() {
+  const job = jobEl.value.trim();
+  if (!job) {
+    authorState.textContent = "say what the agent should do";
+    jobEl.focus();
+    return;
+  }
+  authorState.textContent = "forging three…";
+  try {
+    const r = await fetch("/api/forge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job }),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      authorState.textContent = data.error || ("not forged: " + r.status);
+      return;
+    }
+    const variants = data.variants || [];
+    if (!variants.length) {
+      authorState.textContent = "forge wrote nothing that parsed";
+      return;
+    }
+    bound = null;
+    if (data.live) {
+      source.value = variants[0].source || "";
+      saveState.textContent = "unsaved forge";
+      authorState.textContent = "forged " + variants.length + " against the last Look. First is in the editor. Save to arm the tab.";
+      return;
+    }
+    let best = null;
+    for (let i = 0; i < variants.length; i++) {
+      source.value = variants[i].source || "";
+      authorState.textContent = "proving " + (i + 1) + "/" + variants.length + "…";
+      const score = await prove();
+      const rank = proveRank(score);
+      if (!best || rank > best.rank) best = { source: variants[i].source, score: score, rank: rank };
+      if (rank >= 100) break;
+    }
+    source.value = best.source;
+    saveState.textContent = "unsaved forge";
+    authorState.textContent = best.score && best.score.ok
+      ? "forged " + variants.length + ", kept a winner"
+      : "forged " + variants.length + ", none proved clean";
+  } catch (e) {
+    authorState.textContent = "desk unreachable";
+  }
+}
+
 async function healAgent() {
-  const error = lastProveError || (oopsEl.hidden ? "" : (oopsEl.querySelector(".said") || {}).textContent || "");
+  let error = lastProveError || "";
+  if (!error) {
+    try {
+      const r = await fetch("/api/must");
+      const data = await r.json();
+      const miss = (data.musts || []).find((m) => !m.ok);
+      if (miss) error = "must missed " + (miss.note || miss.sel || "");
+    } catch (e) {}
+  }
+  if (!error) error = oopsEl.hidden ? "" : ((oopsEl.querySelector(".said") || {}).textContent || "");
   if (!source.value.trim()) {
     authorState.textContent = "nothing to heal";
     return;
   }
   if (!error) {
-    authorState.textContent = "prove first, or wait for a throw";
+    authorState.textContent = "prove first, or wait for a miss on the live tab";
     return;
   }
   authorState.textContent = "healing…";
@@ -688,6 +760,10 @@ async function healAgent() {
     }
     source.value = data.source || "";
     saveState.textContent = "unsaved heal";
+    if (data.live) {
+      authorState.textContent = "healed against the last Look. Save to arm the tab.";
+      return;
+    }
     authorState.textContent = "healed. proving…";
     const score = await prove();
     authorState.textContent = score && score.ok ? "healed, prove ok" : "healed, prove missed";
@@ -816,6 +892,7 @@ source.addEventListener("keydown", (ev) => {
 
 saveBtn.addEventListener("click", save);
 writeBtn.addEventListener("click", writeAgent);
+forgeBtn.addEventListener("click", forgeAgent);
 proveBtn.addEventListener("click", () => prove());
 healBtn.addEventListener("click", healAgent);
 lookRecordBtn.addEventListener("click", () => setLook(true));

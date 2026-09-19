@@ -170,6 +170,8 @@ ok(/ORIGIN \+ "\/api\/look"/.test(shell) && /tabs\.sendMessage/.test(shell), "lo
 ok(/function pickTarget/.test(bridgeSrc), "look walks composedPath to the control, not a span inside it");
 ok(/type === "checkbox"/.test(bridgeSrc) && /type === "radio"/.test(bridgeSrc), "look does not type into a checkbox");
 ok(/flushType\(\);/.test(bridgeSrc), "look flushes typing before a punch, so Save does not drop the last letters");
+ok(/function sketch/.test(bridgeSrc), "look also sketches the controls so Write can see the live tab");
+ok(!/data-pa-bridge/.test(bridgeSrc), "the bridge does not hang a name tag on the document");
 ok(/text\/plain/.test(shell), "posted as text/plain, so no browser stops for a preflight the desk cannot answer");
 ok(normalizeTarget("chrome") === "chromium" && normalizeTarget("ff") === "firefox" && normalizeTarget("nonsense") === "chromium",
   "browser names normalize to a known target");
@@ -487,7 +489,23 @@ try {
       body: JSON.stringify({ job: "fill the claim" }),
     });
     ok(noKey.status === 503, "author says so when there is no key");
+    const noForge = await desk("/api/forge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: "fill the claim" }),
+    });
+    ok(noForge.status === 503, "forge says so when there is no key");
   }
+  ok((await desk("/api/forge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job: "" }),
+  })).status === 400, "forge refuses a blank job");
+  ok((await desk("/api/forge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ job: "fill it" }),
+  })).status === 403, "a cross-site page cannot forge");
 
   const sample = await desk("/sample.html");
   ok(sample.status === 200 && /save-claim/.test(await sample.text()), "the sample page is on the desk for prove");
@@ -521,6 +539,17 @@ try {
   });
   const lookHeld = await (await desk("/api/look")).json();
   ok(lookHeld.steps.length === 2 && lookHeld.steps[0].sel === "#vessel", "and the desk holds the trace");
+  ok(lookHeld.live === true, "a trace is live, so Write will not prove it on the sample page");
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({
+      kind: "sketch",
+      nodes: [{ sel: "#vessel", tag: "input", name: "vessel", text: "" }, { sel: "#save-claim", tag: "button", name: "", text: "Save claim" }],
+    }),
+  });
+  const sketched = await (await desk("/api/look")).json();
+  ok(sketched.sketch && sketched.sketch[0] && sketched.sketch[0].sel === "#vessel", "the shell may sketch the live controls");
   await desk("/api/look", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -535,7 +564,8 @@ try {
   const compiledBody = await compiled.json();
   ok(compiled.status === 200 && /type\(agent\.q\("#vessel"\)/.test(compiledBody.source), "compile turns the trace into an arm");
   await desk("/api/look", { method: "DELETE" });
-  ok((await (await desk("/api/look")).json()).recording === false, "and the desk can stop and clear it");
+  const lookCleared = await (await desk("/api/look")).json();
+  ok(lookCleared.recording === false && lookCleared.live === false && !(lookCleared.sketch && lookCleared.sketch.length), "and the desk can stop and clear it");
   await desk("/api/look", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
