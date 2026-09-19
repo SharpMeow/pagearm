@@ -131,55 +131,29 @@ async function shotDesk(chromium, origin) {
   }
 }
 
-async function caption(page, text) {
-  await page.evaluate((t) => {
-    var bar = document.getElementById("pa-caption");
-    if (!bar) {
-      bar = document.createElement("div");
-      bar.id = "pa-caption";
-      bar.style.cssText = [
-        "position:fixed", "left:0", "right:0", "top:0", "z-index:9999",
-        "padding:11px 20px", "background:#0b0c09", "color:#b8ff3c",
-        "font:600 13px/1.3 ui-sans-serif,system-ui,sans-serif",
-        "letter-spacing:.14em", "text-transform:uppercase",
-        "border-bottom:1px solid #23261e",
-      ].join(";");
-      document.body.style.paddingTop = "44px";
-      document.body.insertBefore(bar, document.body.firstChild);
-    }
-    bar.textContent = t;
-  }, text);
-}
-
-async function recordLook(chromium, origin) {
+async function recordLook(chromium) {
   const tmp = join(docs, ".clip");
   mkdirSync(tmp, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   let videoPath = "";
+  const clipW = 880;
+  const clipH = 460;
   try {
     const context = await browser.newContext({
-      viewport: { width: WIDTH, height: 640 },
+      viewport: { width: clipW, height: clipH },
       deviceScaleFactor: 1,
-      recordVideo: { dir: tmp, size: { width: WIDTH, height: 640 } },
+      recordVideo: { dir: tmp, size: { width: clipW, height: clipH } },
     });
     const page = await context.newPage();
-    await page.goto(origin + "/sample.html", { waitUntil: "load" });
-    await caption(page, "Look  ·  the sample page, not a dump");
-    await page.waitForTimeout(700);
-    await caption(page, "Type the claim  ·  this is a real pointer");
-    await page.locator("#vessel").click();
-    await page.keyboard.type("Mackerel Queen", { delay: 28 });
-    await page.locator("#catch").click();
-    await page.keyboard.type("herring", { delay: 28 });
-    await page.locator("#stone").click();
-    await page.keyboard.type("240", { delay: 28 });
-    await page.locator("#grade").selectOption("A");
-    await page.waitForTimeout(280);
-    await caption(page, "Punch Save  ·  a naked click is ignored");
-    await page.locator("#save-claim").click();
-    await page.waitForTimeout(900);
-    await caption(page, "Receipt painted  ·  compile musts #receipt");
-    await page.waitForTimeout(1400);
+    const url = pathToFileURL(join(src, "clip.html")).href;
+    await page.goto(url, { waitUntil: "load" });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => {
+      document.body.classList.remove("play");
+      void document.body.offsetWidth;
+      document.body.classList.add("play");
+    });
+    await page.waitForTimeout(8400);
     const vid = page.video();
     await context.close();
     if (vid) videoPath = await vid.path();
@@ -191,12 +165,12 @@ async function recordLook(chromium, origin) {
   const mp4 = join(docs, "look.mp4");
   ffmpeg([
     "-y", "-i", videoPath,
-    "-vf", "fps=12,scale=1100:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=80:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=4",
+    "-vf", "fps=12,scale=800:-2:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=72:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5",
     "-loop", "0", gif,
   ]);
   ffmpeg([
     "-y", "-i", videoPath,
-    "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "28", "-movflags", "+faststart",
+    "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", "-movflags", "+faststart",
     mp4,
   ]);
   rmSync(tmp, { recursive: true, force: true });
@@ -214,8 +188,8 @@ async function main() {
   await renderStills(pw.chromium);
   await withDesk(async (origin) => {
     await shotDesk(pw.chromium, origin);
-    await recordLook(pw.chromium, origin);
   });
+  await recordLook(pw.chromium);
   console.log("all good");
 }
 
