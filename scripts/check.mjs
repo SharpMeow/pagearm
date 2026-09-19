@@ -167,6 +167,9 @@ ok(/ORIGIN \+ "\/api\/ask"/.test(shell), "ask polls the desk");
 ok(/type === "must"/.test(bridgeSrc) && /ORIGIN \+ "\/api\/must"/.test(shell), "must travels to the desk, quietly");
 ok(/look-on/.test(bridgeSrc) && /look-off/.test(bridgeSrc), "the bridge starts and stops look from a worker message");
 ok(/ORIGIN \+ "\/api\/look"/.test(shell) && /tabs\.sendMessage/.test(shell), "look records through the desk, and P turns it on");
+ok(/function pickTarget/.test(bridgeSrc), "look walks composedPath to the control, not a span inside it");
+ok(/type === "checkbox"/.test(bridgeSrc) && /type === "radio"/.test(bridgeSrc), "look does not type into a checkbox");
+ok(/flushType\(\);/.test(bridgeSrc), "look flushes typing before a punch, so Save does not drop the last letters");
 ok(/text\/plain/.test(shell), "posted as text/plain, so no browser stops for a preflight the desk cannot answer");
 ok(normalizeTarget("chrome") === "chromium" && normalizeTarget("ff") === "firefox" && normalizeTarget("nonsense") === "chromium",
   "browser names normalize to a known target");
@@ -348,6 +351,10 @@ ok(looked.indexOf('agent.must("#save-claim"') >= 0, "the last punch is a must, s
 ok((looked.match(/punch\(agent\.q\("#save-claim"\)\)/g) || []).length === 1, "a double punch on Save is one punch");
 parses(wrapAgent(looked), "wrapped a compiled look");
 ok(/agent\.pip\("ok"\)/.test(compileLook([])), "an empty look still pips, the way a quiet agent always did");
+const typedOnly = compileLook([{ kind: "type", sel: "#vessel", text: "Mackerel Queen" }]);
+ok(typedOnly.indexOf('agent.must("#vessel"') >= 0, "a type-only look still musts the last field");
+ok(typedOnly.indexOf("wait(") < 0, "and does not wait when there is nothing to punch");
+ok(!compileLook([{ kind: "punch", sel: "  " }]).includes("punch("), "a blank selector is not a step");
 
 console.log("drawer");
 // A drawer name turns into a filename, so the only interesting question is
@@ -514,6 +521,12 @@ try {
   });
   const lookHeld = await (await desk("/api/look")).json();
   ok(lookHeld.steps.length === 2 && lookHeld.steps[0].sel === "#vessel", "and the desk holds the trace");
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recording: true }),
+  });
+  ok((await (await desk("/api/look")).json()).steps.length === 2, "Record twice does not wipe a take that is already rolling");
   const compiled = await desk("/api/look/compile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -523,6 +536,30 @@ try {
   ok(compiled.status === 200 && /type\(agent\.q\("#vessel"\)/.test(compiledBody.source), "compile turns the trace into an arm");
   await desk("/api/look", { method: "DELETE" });
   ok((await (await desk("/api/look")).json()).recording === false, "and the desk can stop and clear it");
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recording: true }),
+  });
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ kind: "type", sel: "#vessel", text: "M" }),
+  });
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recording: false }),
+  });
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ kind: "type", sel: "#vessel", text: "Mackerel Queen" }),
+  });
+  const late = await (await desk("/api/look")).json();
+  ok(late.recording === false && late.steps[0] && late.steps[0].text === "Mackerel Queen",
+    "a late type still updates the last field after Stop");
+  await desk("/api/look", { method: "DELETE" });
 
   const icon = await desk("/favicon.png");
   ok(icon.status === 200 && icon.headers.get("content-type") === "image/png",

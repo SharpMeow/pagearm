@@ -12,6 +12,7 @@
     "start": "node scripts/serve.mjs",
     "pack": "node scripts/pack.mjs",
     "check": "node scripts/check.mjs",
+    "sim": "node scripts/look-sim.mjs",
     "test": "node scripts/check.mjs"
   }
 }

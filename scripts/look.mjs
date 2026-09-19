@@ -44,6 +44,14 @@ export function compileLook(steps) {
   if (lastPunch) {
     const note = lastPunch.charAt(0) === "#" ? lastPunch.slice(1) : lastPunch;
     lines.push("  agent.must(" + JSON.stringify(lastPunch) + ", " + JSON.stringify(note) + ");");
+  } else {
+    for (let i = compact.length - 1; i >= 0; i--) {
+      if (compact[i].kind !== "type") continue;
+      const sel = compact[i].sel;
+      const note = sel.charAt(0) === "#" ? sel.slice(1) : sel;
+      lines.push("  agent.must(" + JSON.stringify(sel) + ", " + JSON.stringify(note) + ");");
+      break;
+    }
   }
   lines.push("  agent.pip(\"ok\");", "};");
   return lines.join("\n") + "\n";

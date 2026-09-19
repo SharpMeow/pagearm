@@ -120,21 +120,12 @@ function cssPath(el) {
   return parts.join(" > ");
 }
 
-function fromEvent(ev) {
-  var path = [];
-  try { if (ev.composedPath) path = ev.composedPath(); } catch (e) {}
-  for (var i = 0; i < path.length; i++) {
-    if (path[i] && path[i].nodeType === 1) return path[i];
-  }
-  return ev.target;
-}
-
 function skipType(el) {
   if (!el || !el.tagName) return true;
   var tag = el.tagName.toLowerCase();
   if (tag !== "input" && tag !== "textarea" && tag !== "select" && !el.isContentEditable) return true;
   var type = String(el.type || "").toLowerCase();
-  return type === "password" || type === "hidden" || type === "file";
+  return type === "password" || type === "hidden" || type === "file" || type === "checkbox" || type === "radio";
 }
 
 function interestingPointer(el) {
@@ -153,9 +144,22 @@ function interestingPointer(el) {
   return false;
 }
 
+function pickTarget(ev) {
+  var path = [];
+  try { if (ev.composedPath) path = ev.composedPath(); } catch (e) {}
+  var first = null;
+  for (var i = 0; i < path.length; i++) {
+    if (!path[i] || path[i].nodeType !== 1) continue;
+    if (!first) first = path[i];
+    if (interestingPointer(path[i])) return path[i];
+  }
+  return first || ev.target;
+}
+
 function onPointer(ev) {
   if (!looking || ev.button) return;
-  var el = fromEvent(ev);
+  flushType();
+  var el = pickTarget(ev);
   if (!interestingPointer(el)) return;
   var tag = el.tagName && el.tagName.toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") {
@@ -169,7 +173,10 @@ function onPointer(ev) {
 }
 
 function flushType() {
-  typeTimer = 0;
+  if (typeTimer) {
+    clearTimeout(typeTimer);
+    typeTimer = 0;
+  }
   if (!typePending) return;
   send({ type: "look", kind: "type", sel: typePending.sel, text: typePending.text });
   typePending = null;
@@ -177,7 +184,7 @@ function flushType() {
 
 function onInput(ev) {
   if (!looking) return;
-  var el = fromEvent(ev);
+  var el = pickTarget(ev);
   if (skipType(el)) return;
   var sel = cssPath(el);
   if (!sel) return;
