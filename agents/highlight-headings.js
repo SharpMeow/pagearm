@@ -5,5 +5,11 @@ agent.arm = async () => {
     el.style.outline = "2px solid #b8ff3c";
     el.style.outlineOffset = "4px";
   });
+  agent.onCleanup(() => {
+    heads.forEach((el) => {
+      el.style.outline = "";
+      el.style.outlineOffset = "";
+    });
+  });
   agent.pip("ok", String(heads.length || ""));
 };

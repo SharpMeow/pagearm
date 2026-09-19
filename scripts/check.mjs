@@ -227,6 +227,105 @@ const quiet = runStack([{ name: "quiet", source: "var unused = 1;" }]);
 ok(quiet.log.join(",") === "pip:ok", "a script that arms nothing still pips ok, the way the default always did");
 ok(compileError([{ name: "a", source: "agent.arm = (" }]) !== null, "compileError reads a stack too");
 
+console.log("wrap");
+// PREFIX grew. The contract did not: sync arms still finish in this turn, an
+// empty stack still pips without Promise, and a syntax error still points at
+// the line the editor is showing (BODY_OFFSET is measured from wrapAgent).
+const wrapped = wrapAgent("agent.arm = function () {};");
+ok(/function step\(/.test(wrapped), "armAll walks with step so a sync arm still finishes in this turn");
+ok(!/Promise\.resolve\(\)/.test(wrapped), "the wrapper never calls Promise.resolve, so a vm without Promise still pips");
+ok(/shadowRoot/.test(wrapped), "q walks open shadow roots");
+ok(/contentDocument/.test(wrapped), "and same-origin iframes");
+ok(/composed: true/.test(wrapped), "punch is composed, so it can cross a shadow root");
+ok(/isPrimary: true/.test(wrapped), "punch says it is the primary pointer");
+ok(/inputType: "insertText"/.test(wrapped), "type fires InputEvent insertText");
+ok(/function onCleanup/.test(wrapped) && /__PA_CLEANUP/.test(wrapped), "onCleanup is there so a swap can drop listeners");
+ok(/function watch/.test(wrapped) && /function when/.test(wrapped), "watch and when sit next to it");
+ok(/function must/.test(wrapped) && /function ask/.test(wrapped), "must and ask are part of the agent");
+ok(/typeof MutationObserver === "undefined"/.test(wrapped), "watch no-ops the observer when the vm has none");
+
+function runStackRich(parts, extras = {}) {
+  const log = [];
+  const win = {
+    __PA_ORIGIN: "http://127.0.0.1:8787",
+    __log: log,
+    postMessage(msg) {
+      if (!msg || !msg.type) return;
+      if (msg.type === "pip") log.push("pip:" + (msg.state || "") + (msg.mark ? ":" + msg.mark : ""));
+      else if (msg.type === "must") log.push("must:" + (msg.ok ? "ok" : "miss") + ":" + (msg.note || ""));
+      else if (msg.type === "ask") log.push("ask:" + (msg.prompt || ""));
+      else log.push(msg.type);
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const ctx = createContext({
+    Array, Object, String, Number, Boolean, Math, JSON, Error, Promise,
+    window: win,
+    document: extras.document || { querySelector() { return null; }, querySelectorAll() { return []; } },
+    console: { warn: (...a) => log.push("warn:" + String(a[1] && a[1].message ? a[1].message : a[1])) },
+    location: { hostname: "example.com", pathname: "/", href: "https://example.com/" },
+    setTimeout: extras.setTimeout || (() => 0),
+    MutationObserver: extras.MutationObserver,
+  });
+  new Script(wrapAgent(parts), { filename: "agent.js" }).runInContext(ctx);
+  return { log, agent: win.__agent, window: win };
+}
+
+const cleaned = runStackRich([{
+  name: "tidy",
+  source: "agent.arm = function () { window.__log.push('arm'); agent.onCleanup(function () { window.__log.push('clean'); }); };",
+}]);
+ok(cleaned.log.filter((l) => l === "arm").join(",") === "arm", "first arm ran once");
+cleaned.agent.arm();
+ok(cleaned.log.filter((l) => l === "arm" || l === "clean").join(",") === "arm,clean,arm",
+  "the next arm drops the last run's cleanup before it starts");
+
+const pay = { id: "pay", hidden: false };
+const shadow = {
+  querySelector(sel) { return sel === "#pay" ? pay : null; },
+  querySelectorAll() { return []; },
+};
+const host = { shadowRoot: shadow, tagName: "DIV" };
+const pierced = runStackRich([{
+  name: "pierce",
+  source: "agent.arm = function () { window.__hit = agent.q('#pay'); agent.must('#pay', 'till'); };",
+}], {
+  document: {
+    querySelector(sel) { return sel === "#host" ? host : null; },
+    querySelectorAll(sel) { return sel === "*" ? [host] : []; },
+  },
+});
+ok(pierced.window.__hit === pay, "q finds a node inside an open shadow root");
+ok(pierced.log.indexOf("must:ok:till") >= 0, "must posts that it found it");
+
+const missed = runStackRich([{
+  name: "miss",
+  source: "agent.arm = function () { agent.must('#nope', 'missing'); };",
+}]);
+ok(missed.log.indexOf("must:miss:missing") >= 0 && missed.log.indexOf("pip:err:must") >= 0,
+  "must pips err when the node is not there");
+
+const asked = runStackRich([{
+  name: "ask",
+  source: "agent.arm = function () { agent.ask('which boat', ['heron', 'mackerel']); };",
+}]);
+ok(asked.log.indexOf("ask:which boat") >= 0, "ask posts to the page");
+
+const watched = runStackRich([{
+  name: "w",
+  source: "agent.arm = function () { agent.watch('h1', function () { window.__log.push('watch'); }); };",
+}]);
+ok(watched.log.indexOf("watch") >= 0, "watch still runs once when MutationObserver is missing");
+
+const later = runStackRich([{
+  name: "later",
+  source: "agent.arm = function () { window.__log.push('start'); return Promise.resolve().then(function () { window.__log.push('later'); }); };",
+}]);
+ok(later.log.indexOf("start") >= 0, "an async arm starts in this turn");
+await new Promise((resolve) => setImmediate(resolve));
+ok(later.log.indexOf("later") >= 0, "and the thenable is not dropped");
+
 console.log("drawer");
 // A drawer name turns into a filename, so the only interesting question is
 // whether anything can climb out of the folder. Nothing may.

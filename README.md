@@ -181,7 +181,7 @@ That is a real trade. Power in. The page can see you. If you wanted to hide, thi
 
 `await agent.capture()` asks the background for `captureVisibleTab`. Every browser wants host permission for the tab or a click on **P** (`activeTab`). The zip carries your host list as its permissions, and the agent only runs on that list, so a screenshot works wherever the agent does. Viewport only. Nothing below the fold. What you see is what you get.
 
-`agent.punch(el)` fires pointer and mouse events, then `click()`. Use it when a page ignores a naked `.click()`. Some pages are like that. It is not personal.
+`agent.punch(el)` fires composed pointer and mouse events, then `click()`. Use it when a page ignores a naked `.click()`, or when the control lives in an open shadow root. Some pages are like that. It is not personal.
 
 **Desk asleep is not a disaster.**
 
@@ -311,20 +311,37 @@ Your source is wrapped so `agent` is always in scope. Write like you are in DevT
 
 ```js
 agent.arm()                 // called on inject and on same-hash navigations (see below)
-agent.q(sel, root?)         // querySelector, null-safe
-agent.qa(sel, root?)        // querySelectorAll as an array
+agent.q(sel, root?)         // querySelector, null-safe; walks open shadow and same-origin iframes
+agent.qa(sel, root?)        // querySelectorAll as an array, same walk
 agent.click(el)
-agent.punch(el)             // pointer + mouse, then click
-agent.type(el, text)
+agent.punch(el)             // composed pointer + mouse, then click
+agent.type(el, text)        // prototype setter plus InputEvent insertText
 agent.wait(ms)
 agent.capture()             // Promise<dataUrl>
 agent.pip(state, mark?)     // idle | work | ok | err
+agent.onCleanup(fn)         // run before the next arm, so a swap can drop listeners
+agent.watch(sel, fn)        // MutationObserver; fn(el) now and on change
+agent.when(sel, fn)         // fn(el) for each new match after the first scan
+agent.must(sel, note?)      // find it or pip err; posts {type:"must"}
+agent.ask(prompt, choices?) // Promise<string>; posts {type:"ask"}, waits for {type:"ask-result"}
 agent.origin                // desk origin
 agent.match                 // hostname + pathname, live (follows pushState)
 agent.scripts               // the stack this agent was built from, in order
 ```
 
-`arm()` runs when the code is injected, then again on every completed navigation and `pushState` that finds the same hash, and when you click **P**. On a fresh page load with the desk up, the packed copy arms first at document idle, then the worker swaps in the live version and arms that. Write `arm()` so it is safe to run twice. A `punch` on a Save button is not; guard it with a flag on `window`, the way `reading-ruler.js` does.
+`arm()` runs when the code is injected, then again on every completed navigation and `pushState` that finds the same hash, and when you click **P**. On a fresh page load with the desk up, the packed copy arms first at document idle, then the worker swaps in the live version and arms that. Write `arm()` so it is safe to run twice. A `punch` on a Save button is not; guard it with a flag on `window`, or drop the binding in `onCleanup`, the way `reading-ruler.js` does.
+
+`q` and `qa` look in the document first, then in every open shadow root, then in every same-origin iframe they can reach. Closed shadow stays closed. A frame from another origin stays silent.
+
+`punch` sets `composed: true` and `isPrimary: true`, so a button inside an open shadow can still hear it. `type` goes through the prototype setter (React and friends) and fires `InputEvent` with `inputType: "insertText"`.
+
+`onCleanup(fn)` runs at the start of the next `armAll`. That is how a swap drops a listener instead of stacking a second one. `watch` is a MutationObserver that cleans itself. `when` is watch that ignores what was already on the page and fires only for what shows up after. On a vm with no `MutationObserver`, `watch` still runs once and otherwise no-ops.
+
+`must(sel, note)` is a check you can see. Miss, and P goes red. It also posts `{ type: "must", sel, ok, note }` on the page.
+
+`ask(prompt, choices)` posts `{ type: "ask", id, prompt, choices }` and waits up to a minute for `{ type: "ask-result", id, answer }`. Same shape as capture. The packed desk does not yet answer it. A page that listens can. Without a listener it resolves to an empty string.
+
+`arm` may return a thenable. `armAll` awaits it, in stack order, so an `async` arm is not dropped. Sync arms still finish in the same turn. An empty stack pips `ok` without touching `Promise`.
 
 ---
 
