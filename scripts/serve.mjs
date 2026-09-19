@@ -501,7 +501,15 @@ async function handle(req, res) {
   }
 
   if (url.pathname === "/api/examples") {
-    const names = ["hello.js", "highlight-headings.js", "outline-forms.js", "reading-ruler.js"];
+    const names = [
+      "hello.js",
+      "highlight-headings.js",
+      "outline-forms.js",
+      "reading-ruler.js",
+      "copy-table.js",
+      "dump-form.js",
+      "mark-required.js",
+    ];
     const examples = names.map((name) => ({
       id: name.replace(/\.js$/, ""),
       name,
