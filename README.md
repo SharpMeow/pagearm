@@ -52,7 +52,7 @@ Say yes to user scripts when your browser offers it. Chromium puts an **Allow Us
 
 Pin **P** in the toolbar. Green means you are armed. Gold means it is thinking. Red means your `arm()` threw, and the console will tell you why, gently. A little badge is there if you want to flash a count. Hover text is just P. Nobody walking by needs to know what it is.
 
-PageArm uses the Business Source License 1.1. Use it yourself. Do not ship it as a store listing or a competing product. See `LICENSE`.
+PageArm uses the PolyForm Small Business License 1.0.0. Use it yourself if you are an individual or a small company. Larger companies need a paid license. Do not ship it as a store listing. See `LICENSE`.
 
 ---
 
@@ -196,6 +196,18 @@ It runs in *your* browser, in the tab you already logged into, cookies and all. 
 **The toolbar is a status light, not a logo campaign.**
 
 `agent.pip("work")` then `agent.pip("ok", "12")` paints **P** gold, then green with a `12`. Hover text is just `P`. Glance and keep moving.
+
+---
+
+## What is actually new
+
+Not the pieces. Userscript managers already fetch a remote file. Playwright already synthesizes pointer events. Chrome already has a recorder. Those are not PageArm.
+
+The machine is. An eight-file MV3 shell you install once. After that the living agent is `GET /agent.js` on a desk you run, hashed: new hash injects, same hash just calls `arm()`. The default click is `punch`, a composed pointer sequence, because the portals this is for ignore `el.click()`. The sample page on the desk encodes that on purpose: Save on that page drops a naked click, so a model or a look that only `.click()`s fails in the workshop instead of in the portal. Look records the tab you already logged into and compiles that punch-and-must arm. A dumped HTML copy of a vendor page will not recreate "Save ignores a naked click," so Look does not snapshot-prove.
+
+I have not seen that combination shipped as a personal runtime: frozen shell, hashed desk URL, punch as the primitive, live-tab look, prove fixture that punishes `.click()`. If it exists under another name, it is not this repo.
+
+The license is source-available, not MIT. PolyForm Small Business 1.0.0: individuals and companies under 100 people and under 1,000,000 USD prior-year revenue may use, change, and redistribute it under that license. Larger companies need a separate paid license. It is not a store product, and MAIN world is visible to the page. Those two are the point, not a footnote.
 
 ---
 
@@ -378,4 +390,4 @@ Writes `dist/pagearm-chromium.zip`, `dist/pagearm-firefox.zip`, and `dist/pagear
 
 ## License
 
-Business Source License 1.1. See `LICENSE`. Production use for yourself is fine. Do not offer PageArm, or a derivative, as a competing product, hosted service, or store listing. On 2030-09-16 this version becomes GPL-2.0-or-later.
+PolyForm Small Business License 1.0.0. See `LICENSE`. Individuals and small companies (fewer than 100 people and less than 1,000,000 USD of revenue in the prior tax year) may use, change, and redistribute PageArm under that license. Larger companies need a separate paid license. Do not offer PageArm, or a derivative, as a store listing.
