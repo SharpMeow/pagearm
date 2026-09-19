@@ -218,10 +218,12 @@ api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return;
   }
   if (msg.type === "look") {
+    var nodes = Array.isArray(msg.nodes) ? msg.nodes.slice(0, 80) : undefined;
     tellLook({
       kind: String(msg.kind || "punch"),
       sel: String(msg.sel || "").slice(0, 200),
       text: String(msg.text || "").slice(0, 500),
+      nodes: nodes,
     });
     return;
   }
