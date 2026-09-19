@@ -31,7 +31,7 @@ Write shell code against the `api` shim at the top of `background.js` and `bridg
 
 Verify the Firefox build with `npx web-ext lint --source-dir dist/pagearm-firefox`. One warning, `DANGEROUS_EVAL`, is expected and is the CSP fallback.
 
-The README stills are rendered from `docs/src/*.html` at 1100 CSS pixels wide with a device scale factor of 2. `desk.png` is a shot of the live desk. `look.gif` / `look.mp4` are recorded from `docs/src/clip.html` (click fails, punch works, must the receipt). `npm run docs` re-renders all of them. Do not hand-edit a PNG or GIF.
+The README stills are rendered from `docs/src/*.html` at 1100 CSS pixels wide with a device scale factor of 2. `desk.png` is a shot of the live desk. `look.gif` / `look.mp4` are recorded from `docs/src/clip.html`: what PageArm is, why a click fails, that the agent hot-swaps. One caption, always the same slot. `npm run docs` re-renders all of them. Do not hand-edit a PNG or GIF.
 
 ## How to work
 
