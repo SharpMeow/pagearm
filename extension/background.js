@@ -217,6 +217,14 @@ api.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     });
     return;
   }
+  if (msg.type === "look") {
+    tellLook({
+      kind: String(msg.kind || "punch"),
+      sel: String(msg.sel || "").slice(0, 200),
+      text: String(msg.text || "").slice(0, 500),
+    });
+    return;
+  }
 });
 
 // An agent that throws on every navigation would otherwise be a firehose, so
@@ -296,6 +304,39 @@ function tellMust(entry) {
       body: JSON.stringify(entry),
     }));
   } catch (e) {}
+}
+
+function tellLook(entry) {
+  try {
+    quiet(fetch(ORIGIN + "/api/look", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(entry),
+    }));
+  } catch (e) {}
+}
+
+function tellTab(tabId, msg) {
+  try {
+    if (PROMISED) {
+      quiet(api.tabs.sendMessage(tabId, msg));
+      return;
+    }
+    api.tabs.sendMessage(tabId, msg, function () { hush(); });
+  } catch (e) {}
+}
+
+async function syncLook(tabId) {
+  if (!tabId) return;
+  var rec = false;
+  try {
+    var r = await fetch(ORIGIN + "/api/look");
+    var data = await r.json();
+    rec = !!(data && data.recording);
+  } catch (e) {
+    return;
+  }
+  tellTab(tabId, { type: rec ? "look-on" : "look-off" });
 }
 
 function djb(s) {
@@ -492,7 +533,10 @@ async function arm(tabId, frameIds, force) {
   var current = ping.filter(function (p) { return p.result && p.result.ver === ver; });
   var stale = ping.filter(function (p) { return !(p.result && p.result.ver === ver); });
   await callArm(tabId, ids(current));
-  if (!stale.length) return;
+  if (!stale.length) {
+    await syncLook(tabId);
+    return;
+  }
 
   await injectCode(tabId, ids(stale), src, ver);
 
@@ -501,6 +545,7 @@ async function arm(tabId, frameIds, force) {
   var after = await pingFrames(frameTarget(tabId, ids(stale)));
   var bare = after.filter(function (p) { return !(p.result && (p.result.ver === ver || p.result.packed)); });
   await injectPacked(tabId, ids(bare));
+  await syncLook(tabId);
 }
 
 api.webNavigation.onCompleted.addListener(function (details) {

@@ -287,3 +287,8 @@ button.danger:hover { color: #e24b4b; border-color: #e24b4b; }
   color: var(--muted);
 }
 .musts[hidden] { display: none; }
+#look-record[aria-pressed="true"] {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}

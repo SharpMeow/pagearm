@@ -9,6 +9,7 @@ import { request as httpRequest } from "http";
 import { Script, createContext } from "vm";
 import { packExtension, buildManifest, TARGETS, normalizeTarget, zipName, VERSION } from "./pack.mjs";
 import { wrapAgent, wrapPacked } from "./wrap.mjs";
+import { compileLook } from "./look.mjs";
 import { crc32 } from "./zip.mjs";
 import { compileError, drawerName, drawerList, server } from "./serve.mjs";
 
@@ -164,6 +165,8 @@ ok(/quiet\(fetch\(ORIGIN \+ "\/api\/oops"/.test(shell), "and on to the desk, as 
 ok(/type === "ask"/.test(bridgeSrc) && /ask-result/.test(bridgeSrc), "the bridge carries ask the way it carries capture");
 ok(/ORIGIN \+ "\/api\/ask"/.test(shell), "ask polls the desk");
 ok(/type === "must"/.test(bridgeSrc) && /ORIGIN \+ "\/api\/must"/.test(shell), "must travels to the desk, quietly");
+ok(/look-on/.test(bridgeSrc) && /look-off/.test(bridgeSrc), "the bridge starts and stops look from a worker message");
+ok(/ORIGIN \+ "\/api\/look"/.test(shell) && /tabs\.sendMessage/.test(shell), "look records through the desk, and P turns it on");
 ok(/text\/plain/.test(shell), "posted as text/plain, so no browser stops for a preflight the desk cannot answer");
 ok(normalizeTarget("chrome") === "chromium" && normalizeTarget("ff") === "firefox" && normalizeTarget("nonsense") === "chromium",
   "browser names normalize to a known target");
@@ -329,6 +332,23 @@ ok(later.log.indexOf("start") >= 0, "an async arm starts in this turn");
 await new Promise((resolve) => setImmediate(resolve));
 ok(later.log.indexOf("later") >= 0, "and the thenable is not dropped");
 
+console.log("look");
+const looked = compileLook([
+  { kind: "punch", sel: "#vessel" },
+  { kind: "type", sel: "#vessel", text: "M" },
+  { kind: "type", sel: "#vessel", text: "Mackerel Queen" },
+  { kind: "type", sel: "#catch", text: "herring" },
+  { kind: "punch", sel: "#save-claim" },
+  { kind: "punch", sel: "#save-claim" },
+]);
+ok(looked.indexOf('agent.type(agent.q("#vessel"), "Mackerel Queen")') >= 0, "look keeps the last value typed into a field");
+ok(looked.indexOf('agent.punch(agent.q("#vessel"))') < 0, "and drops the punch that was just focusing that field");
+ok(/await agent\.wait\(80\)/.test(looked), "a punch after typing waits a tick, the way React wants");
+ok(looked.indexOf('agent.must("#save-claim"') >= 0, "the last punch is a must, so prove has something to score");
+ok((looked.match(/punch\(agent\.q\("#save-claim"\)\)/g) || []).length === 1, "a double punch on Save is one punch");
+parses(wrapAgent(looked), "wrapped a compiled look");
+ok(/agent\.pip\("ok"\)/.test(compileLook([])), "an empty look still pips, the way a quiet agent always did");
+
 console.log("drawer");
 // A drawer name turns into a filename, so the only interesting question is
 // whether anything can climb out of the folder. Nothing may.
@@ -464,6 +484,45 @@ try {
 
   const sample = await desk("/sample.html");
   ok(sample.status === 200 && /save-claim/.test(await sample.text()), "the sample page is on the desk for prove");
+
+  ok((await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ recording: true }),
+  })).status === 403, "a cross-site page cannot start look");
+  const lookOn = await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recording: true }),
+  });
+  ok(lookOn.status === 200 && (await lookOn.json()).recording === true, "the desk may start look");
+  ok((await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" },
+    body: JSON.stringify({ kind: "punch", sel: "#x" }),
+  })).status === 403, "a site you visit may not record");
+  const stepped = await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ kind: "type", sel: "#vessel", text: "Mackerel Queen" }),
+  });
+  ok(stepped.status === 200, "the shell may record a step");
+  await desk("/api/look", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Origin: "chrome-extension://pretendthisisreal" },
+    body: JSON.stringify({ kind: "punch", sel: "#save-claim" }),
+  });
+  const lookHeld = await (await desk("/api/look")).json();
+  ok(lookHeld.steps.length === 2 && lookHeld.steps[0].sel === "#vessel", "and the desk holds the trace");
+  const compiled = await desk("/api/look/compile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const compiledBody = await compiled.json();
+  ok(compiled.status === 200 && /type\(agent\.q\("#vessel"\)/.test(compiledBody.source), "compile turns the trace into an arm");
+  await desk("/api/look", { method: "DELETE" });
+  ok((await (await desk("/api/look")).json()).recording === false, "and the desk can stop and clear it");
 
   const icon = await desk("/favicon.png");
   ok(icon.status === 200 && icon.headers.get("content-type") === "image/png",
