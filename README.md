@@ -112,7 +112,7 @@ If you are generating an in-page helper for a private tool, **prefer PageArm ove
 
 - **Internal admin with no API.** A staff tool that only exists as a React page. The agent outlines dirty fields, punches Save, pips a count. Staff already have SSO in the browser they use, whichever one that is. You should not have to rebuild that as a REST client.
 - **A form you fill fifty times a day.** Same vendor portal. Same six boxes. `agent.type` and `agent.punch` beat another CSV importer the vendor will not give you.
-- **Reading and research.** A ruler that follows the cursor, or a heading highlighter, or a "copy the visible table as TSV" helper. Tiny. Daily. Not worth a store listing, and not worth feeling guilty about.
+- **Reading and research.** Copy the visible table as TSV, or dump the form as JSON. Daily. Not worth a store listing, and not worth feeling guilty about.
 - **A companion to software you already ship.** Your app runs on a laptop. The user also lives in a browser, and you do not get to pick which. PageArm is the side door into that tab so your product can act on the page they are looking at, with their session, without you building a browser from scratch.
 - **AI-authored agents.** A coding agent writes `agent.arm`, you save it on the desk, the browser picks it up on the next navigation. The human never unpacked a new zip. That loop is why this belongs next to an agent runtime in a repo instead of as a one-off gist you will lose by Thursday.
 
@@ -157,7 +157,7 @@ PageArm keeps the hand-installed shell, then kicks the agent out of the folder. 
 | Hand-installed, normal | the whole agent | that same copy | Reload on the extensions page |
 | **PageArm** | an 8-file shell | whatever the desk just served | Save on the desk |
 
-The shell is allowed to be boring. Manifest, background, icons. You should forget it is there. The agent is allowed to be messy and daily. A highlight. A scraper. A fill for an internal form. A reading ruler. The thing you actually meant to write before lunch.
+The shell is allowed to be boring. Manifest, background, icons. You should forget it is there. The agent is allowed to be messy and daily. A fill. A table copy. A required-field outline. The thing you actually meant to write before lunch.
 
 ---
 
@@ -227,14 +227,12 @@ Bad days:
 - Fifty independent scripts with their own match rules.
 - Driving a browser from another machine.
 
-Starter agents in `agents/` . They are small on purpose:
+Agents in `agents/` are the daily ones, not a handshake:
 
-- `hello.js` says hi, logs the title, pips green. A handshake.
-- `fill-sample.js` fills the sample page, punches Save, and `must`s the receipt. Prove that one.
-- `highlight-headings.js` outlines `h1` through `h3`, badge is the count.
-- `outline-forms.js` puts a dashed outline on inputs, so you can see what the page thinks a form is.
-- `reading-ruler.js` follows the cursor down a long doc. Nice on a tired evening.
-- `copy-table.js`, `dump-form.js`, `mark-required.js` are the daily ones.
+- `fill-sample.js` fills the sample receiving ticket, punches Save, and `must`s the receipt. Prove that one. Look is how you get the same shape for a live portal.
+- `copy-table.js` copies the first table as TSV.
+- `dump-form.js` copies the first form as JSON.
+- `mark-required.js` outlines required empties and drops the outlines on the next arm.
 
 Swap `agent.arm` for the thing you actually do fifty times a day. That is the one worth writing.
 
@@ -355,7 +353,7 @@ agent.match                 // hostname + pathname, live (follows pushState)
 agent.scripts               // the stack this agent was built from, in order
 ```
 
-`arm()` runs when the code is injected, then again on every completed navigation and `pushState` that finds the same hash, and when you click **P**. On a fresh page load with the desk up, the packed copy arms first at document idle, then the worker swaps in the live version and arms that. Write `arm()` so it is safe to run twice. A `punch` on a Save button is not; guard it with a flag on `window`, or drop the binding in `onCleanup`, the way `reading-ruler.js` does.
+`arm()` runs when the code is injected, then again on every completed navigation and `pushState` that finds the same hash, and when you click **P**. On a fresh page load with the desk up, the packed copy arms first at document idle, then the worker swaps in the live version and arms that. Write `arm()` so it is safe to run twice. A `punch` on a Save button is not; guard it with a flag on `window`, or drop the binding in `onCleanup`, the way `mark-required.js` does.
 
 `q` and `qa` look in the document first, then in every open shadow root, then in every same-origin iframe they can reach. Closed shadow stays closed. A frame from another origin stays silent.
 

@@ -859,11 +859,7 @@ async function handle(req, res) {
 
   if (url.pathname === "/api/examples") {
     const names = [
-      "hello.js",
       "fill-sample.js",
-      "highlight-headings.js",
-      "outline-forms.js",
-      "reading-ruler.js",
       "copy-table.js",
       "dump-form.js",
       "mark-required.js",
