@@ -4,8 +4,6 @@ Install a tiny browser shell once. After that the agent is a URL on your machine
 
 Chromium, Firefox, and Safari. One codebase, one desk, one agent, three manifests.
 
-<img src="docs/look.gif" width="800" alt="PageArm: install a shell once, punch the live tab, the agent hot-swaps. No reinstall.">
-
 ```
  ____                     _
 |  _ \ __ _  __ _  ___   / \   _ __ _ __ ___

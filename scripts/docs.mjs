@@ -1,9 +1,9 @@
-// Render README stills from docs/src/*.html, a live desk shot, and a short
-// Look clip of the sample page. Playwright plus ffmpeg. Not part of check.
+// Render README stills from docs/src/*.html and a live desk shot.
+// Playwright. Not part of check.
 
-import { spawn, execFileSync } from "child_process";
+import { spawn } from "child_process";
 import { createServer } from "net";
-import { mkdirSync, rmSync, existsSync, statSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 
@@ -72,15 +72,11 @@ function kb(path) {
   try { return Math.round(statSync(path).size / 1024); } catch (e) { return 0; }
 }
 
-function ffmpeg(args) {
-  execFileSync("ffmpeg", args, { stdio: "pipe" });
-}
-
 async function renderStills(chromium) {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({
-      viewport: { width: WIDTH, height: 800 },
+      viewport: { width: WIDTH, height: 2000 },
       deviceScaleFactor: SCALE,
     });
     for (const name of ["guide", "hotswap", "look"]) {
@@ -88,7 +84,7 @@ async function renderStills(chromium) {
       await page.goto(url, { waitUntil: "load" });
       await page.waitForTimeout(250);
       const out = join(docs, name + ".png");
-      await page.screenshot({ path: out, fullPage: true, type: "png" });
+      await page.locator("body").screenshot({ path: out, type: "png" });
       console.log("  " + name + ".png  " + kb(out) + "k");
     }
   } finally {
@@ -133,48 +129,6 @@ async function shotDesk(chromium, origin) {
   }
 }
 
-async function recordLook(chromium) {
-  const tmp = join(docs, ".clip");
-  mkdirSync(tmp, { recursive: true });
-  const browser = await chromium.launch({ headless: true });
-  let videoPath = "";
-  const clipW = 880;
-  const clipH = 520;
-  try {
-    const context = await browser.newContext({
-      viewport: { width: clipW, height: clipH },
-      deviceScaleFactor: 1,
-      recordVideo: { dir: tmp, size: { width: clipW, height: clipH } },
-    });
-    const page = await context.newPage();
-    const url = pathToFileURL(join(src, "clip.html")).href;
-    await page.goto(url, { waitUntil: "load" });
-    await page.waitForTimeout(150);
-    await page.evaluate(() => window.__paClipDone);
-    const vid = page.video();
-    await context.close();
-    if (vid) videoPath = await vid.path();
-  } finally {
-    await browser.close();
-  }
-  if (!videoPath || !existsSync(videoPath)) throw new Error("no look clip");
-  const gif = join(docs, "look.gif");
-  const mp4 = join(docs, "look.mp4");
-  ffmpeg([
-    "-y", "-i", videoPath,
-    "-vf", "fps=10,scale=760:-2:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=64:reserve_transparent=0[p];[s1][p]paletteuse=dither=bayer:bayer_scale=5",
-    "-loop", "0", gif,
-  ]);
-  ffmpeg([
-    "-y", "-i", videoPath,
-    "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", "-movflags", "+faststart",
-    mp4,
-  ]);
-  rmSync(tmp, { recursive: true, force: true });
-  console.log("  look.gif  " + kb(gif) + "k");
-  console.log("  look.mp4  " + kb(mp4) + "k");
-}
-
 async function main() {
   const pw = await loadPlaywright();
   if (!pw || !pw.chromium) {
@@ -186,7 +140,6 @@ async function main() {
   await withDesk(async (origin) => {
     await shotDesk(pw.chromium, origin);
   });
-  await recordLook(pw.chromium);
   console.log("all good");
 }
 
