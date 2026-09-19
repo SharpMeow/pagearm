@@ -1,6 +1,7 @@
-// Isolated-world courier. Carries pip, capture, ask, must, and nav between the
-// page and the worker. No keepalive: webNavigation wakes the worker when it is
-// needed, and a tab that pokes it every twelve seconds forever only burns battery.
+// Isolated-world courier. Carries pip, capture, ask, must, look, and nav
+// between the page and the worker. No keepalive: webNavigation wakes the
+// worker when it is needed, and a tab that pokes it every twelve seconds
+// forever only burns battery.
 
 // Firefox and Safari hand content scripts a promise-shaped `browser`. Chromium
 // has `chrome` and a callback. The courier does not care which house it is in.
@@ -64,6 +65,153 @@ window.addEventListener("message", function (ev) {
     });
   }
 });
+
+// Look records in this world, not MAIN, so wrap stays boring. Open shadow is
+// visible here. Closed shadow is not. Passwords are never written down.
+var looking = false;
+var typeTimer = 0;
+var typePending = null;
+
+function esc(s) {
+  try {
+    if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(s);
+  } catch (e) {}
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+function parentOf(el) {
+  if (!el) return null;
+  if (el.parentElement) return el.parentElement;
+  var root = el.getRootNode && el.getRootNode();
+  if (root && root.host) return root.host;
+  return null;
+}
+
+function cssPath(el) {
+  if (!el || !el.tagName) return "";
+  if (el.id) return "#" + esc(el.id);
+  var name = el.getAttribute && el.getAttribute("name");
+  if (name) return el.tagName.toLowerCase() + '[name="' + esc(name) + '"]';
+  var parts = [];
+  var node = el;
+  for (var depth = 0; node && node.tagName && depth < 6; depth++) {
+    if (node.id) {
+      parts.unshift("#" + esc(node.id));
+      break;
+    }
+    var tag = node.tagName.toLowerCase();
+    var parent = parentOf(node);
+    var part = tag;
+    if (parent && parent.children) {
+      var kids = parent.children;
+      var count = 0;
+      var index = 0;
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i] && kids[i].tagName === node.tagName) {
+          count++;
+          if (kids[i] === node) index = count;
+        }
+      }
+      if (count > 1) part += ":nth-of-type(" + index + ")";
+    }
+    parts.unshift(part);
+    node = parent;
+  }
+  return parts.join(" > ");
+}
+
+function fromEvent(ev) {
+  var path = [];
+  try { if (ev.composedPath) path = ev.composedPath(); } catch (e) {}
+  for (var i = 0; i < path.length; i++) {
+    if (path[i] && path[i].nodeType === 1) return path[i];
+  }
+  return ev.target;
+}
+
+function skipType(el) {
+  if (!el || !el.tagName) return true;
+  var tag = el.tagName.toLowerCase();
+  if (tag !== "input" && tag !== "textarea" && tag !== "select" && !el.isContentEditable) return true;
+  var type = String(el.type || "").toLowerCase();
+  return type === "password" || type === "hidden" || type === "file";
+}
+
+function interestingPointer(el) {
+  if (!el || !el.tagName) return false;
+  var tag = el.tagName.toLowerCase();
+  if (tag === "html" || tag === "body" || tag === "script" || tag === "style" || tag === "svg") return false;
+  if (tag === "button" || tag === "a" || tag === "summary") return true;
+  if (tag === "label" || tag === "option") return true;
+  if (tag === "tr" || tag === "td" || tag === "th") return true;
+  if (tag === "input" || tag === "select" || tag === "textarea") return true;
+  try {
+    var role = el.getAttribute && el.getAttribute("role");
+    if (role === "button" || role === "link" || role === "tab") return true;
+  } catch (e) {}
+  if (el.id) return true;
+  return false;
+}
+
+function onPointer(ev) {
+  if (!looking || ev.button) return;
+  var el = fromEvent(ev);
+  if (!interestingPointer(el)) return;
+  var tag = el.tagName && el.tagName.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") {
+    var type = String(el.type || "").toLowerCase();
+    if (type !== "button" && type !== "submit" && type !== "checkbox" && type !== "radio") return;
+  }
+  if (el.isContentEditable) return;
+  var sel = cssPath(el);
+  if (!sel) return;
+  send({ type: "look", kind: "punch", sel: sel });
+}
+
+function flushType() {
+  typeTimer = 0;
+  if (!typePending) return;
+  send({ type: "look", kind: "type", sel: typePending.sel, text: typePending.text });
+  typePending = null;
+}
+
+function onInput(ev) {
+  if (!looking) return;
+  var el = fromEvent(ev);
+  if (skipType(el)) return;
+  var sel = cssPath(el);
+  if (!sel) return;
+  var text = el.isContentEditable ? String(el.textContent || "") : String(el.value || "");
+  typePending = { sel: sel, text: text.slice(0, 500) };
+  if (typeTimer) clearTimeout(typeTimer);
+  typeTimer = setTimeout(flushType, 180);
+}
+
+function startLook() {
+  if (looking) return;
+  looking = true;
+  document.addEventListener("pointerdown", onPointer, true);
+  document.addEventListener("input", onInput, true);
+  document.addEventListener("change", onInput, true);
+}
+
+function stopLook() {
+  if (!looking) return;
+  looking = false;
+  document.removeEventListener("pointerdown", onPointer, true);
+  document.removeEventListener("input", onInput, true);
+  document.removeEventListener("change", onInput, true);
+  if (typeTimer) clearTimeout(typeTimer);
+  flushType();
+}
+
+try {
+  api.runtime.onMessage.addListener(function (msg) {
+    if (!msg) return;
+    if (msg.type === "look-on") startLook();
+    if (msg.type === "look-off") stopLook();
+  });
+} catch (eMsg) {}
 
 // Safari has no webNavigation.onHistoryStateUpdated, so a route change inside a
 // single-page app would otherwise go unnoticed until the next real load. Two

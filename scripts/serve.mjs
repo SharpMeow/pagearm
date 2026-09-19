@@ -6,6 +6,7 @@ import { Script } from "vm";
 import { packExtension, normalizeTarget, zipName } from "./pack.mjs";
 import { pngGlyph } from "./zip.mjs";
 import { wrapAgent } from "./wrap.mjs";
+import { compileLook } from "./look.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT || 8787);
@@ -185,6 +186,8 @@ const MAX_MUST = 20;
 let mustLog = [];
 const MAX_ASK_ANSWERS = 10;
 let askState = { pending: null, answers: {} };
+const MAX_LOOK = 200;
+let lookState = { recording: false, steps: [] };
 
 function clamp(value, max) {
   return String(value === undefined || value === null ? "" : value).slice(0, max);
@@ -758,6 +761,93 @@ async function handle(req, res) {
       return;
     }
     send(res, 200, JSON.stringify({ ok: true, source: stripFence(result.text) }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/look") {
+    if (req.method === "GET") {
+      send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method === "DELETE") {
+      if (!sameSite(req)) {
+        send(res, 403, "only the desk may clear that");
+        return;
+      }
+      lookState = { recording: false, steps: [] };
+      send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, "not that way");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "recording")) {
+      if (!sameSite(req)) {
+        send(res, 403, "only the desk may arm look");
+        return;
+      }
+      const rec = !!body.recording;
+      lookState.recording = rec;
+      if (rec) lookState.steps = [];
+      send(res, 200, JSON.stringify(lookState), "application/json; charset=utf-8");
+      return;
+    }
+    if (!fromShell(req)) {
+      send(res, 403, "only the shell may record");
+      return;
+    }
+    if (!lookState.recording) {
+      send(res, 200, JSON.stringify({ ok: true, ignored: true }), "application/json; charset=utf-8");
+      return;
+    }
+    const kind = body.kind === "type" ? "type" : "punch";
+    const sel = clamp(body.sel, 200);
+    if (!sel) {
+      send(res, 400, "need a selector");
+      return;
+    }
+    if (kind === "type") {
+      const last = lookState.steps[lookState.steps.length - 1];
+      if (last && last.kind === "type" && last.sel === sel) {
+        last.text = clamp(body.text, 500);
+        send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+        return;
+      }
+    }
+    lookState.steps.push({ kind, sel, text: kind === "type" ? clamp(body.text, 500) : "" });
+    lookState.steps = lookState.steps.slice(-MAX_LOOK);
+    send(res, 200, JSON.stringify({ ok: true }), "application/json; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/api/look/compile" && req.method === "POST") {
+    if (!sameSite(req)) {
+      send(res, 403, "only the desk may compile");
+      return;
+    }
+    let body = {};
+    try {
+      body = JSON.parse((await readBody(req)) || "{}");
+    } catch (e) {
+      send(res, e && e.message === "too big" ? 413 : 400, e && e.message === "too big" ? "too big" : "bad json");
+      return;
+    }
+    const steps = Array.isArray(body.steps) ? body.steps : lookState.steps;
+    const source = compileLook(steps);
+    const err = compileError(source);
+    if (err) {
+      send(res, 400, JSON.stringify({ ok: false, error: err }), "application/json; charset=utf-8");
+      return;
+    }
+    send(res, 200, JSON.stringify({ ok: true, source }), "application/json; charset=utf-8");
     return;
   }
 

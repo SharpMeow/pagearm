@@ -303,6 +303,10 @@ DELETE /api/must                clear them
 POST   /api/wrap                wrap editor source so prove can inject it
 POST   /api/author              { job } write an arm, needs XAI_API_KEY
 POST   /api/heal                { source, error } patch an arm, same key
+GET    /api/look                recording flag plus the trace
+POST   /api/look                desk starts/stops, or the shell records a step
+DELETE /api/look                stop and clear
+POST   /api/look/compile        turn the trace into agent.arm
 GET    /api/drawer              the shelf plus the stack
 GET    /api/drawer/:name        one script
 POST   /api/drawer/:name        save it, syntax-checked first
@@ -350,6 +354,8 @@ agent.scripts               // the stack this agent was built from, in order
 `must(sel, note)` is a check you can see. Miss, and P goes red. It also posts `{ type: "must", sel, ok, note }` on the page, and the bridge carries that to the desk.
 
 `ask(prompt, choices)` posts `{ type: "ask", id, prompt, choices }` and waits up to a minute for `{ type: "ask-result", id, answer }`. Same shape as capture: the bridge hands it to the background, the background posts it to the desk, and the desk paints a bar with the choices. Skip sends an empty string. Without a desk the page still times out empty, the way capture returns `""` when a screenshot does not happen.
+
+**Look.** Record what you do on the live tab, compile `agent.arm`, save. No model. Click **Record** on the desk, then **P** on the tab, then use the page. **Stop**, **Compile**, **Save**. The recorder lives in the isolated bridge, not in wrap, and it never writes down a password field. Compile coalesces typing, drops the punch that was just focusing a field, waits a tick before a punch that follows a type, and `must`s the last punch so prove has something to score. That arm is for the tab you recorded, not for `/sample.html`.
 
 **Write and prove.** The desk can ask a model to write `agent.arm` (`POST /api/author`, needs `XAI_API_KEY`) and then prove that source on `/sample.html` in a frame on the desk, not in a live tab. Prove auto-answers `ask` with the first choice so it does not wait on you. Heal sends the last miss back to the model and proves again. A punch on Save in that frame does not hit a vendor. Save on the desk is still what arms your real tabs.
 

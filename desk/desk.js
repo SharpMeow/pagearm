@@ -28,6 +28,10 @@ const authorState = document.getElementById("author-state");
 const proveFrame = document.getElementById("prove-frame");
 const proveOut = document.getElementById("prove-out");
 const mustsEl = document.getElementById("musts");
+const lookRecordBtn = document.getElementById("look-record");
+const lookStopBtn = document.getElementById("look-stop");
+const lookCompileBtn = document.getElementById("look-compile");
+const lookStateEl = document.getElementById("look-state");
 
 // Two different things. `bound` is the drawer script the editor is holding.
 // `stack` is the ordered list the browser is actually running, which is usually
@@ -692,6 +696,75 @@ async function healAgent() {
   }
 }
 
+async function setLook(recording) {
+  try {
+    const r = await fetch("/api/look", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recording: !!recording }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      lookStateEl.textContent = data.error || ("not changed: " + r.status);
+      return;
+    }
+    showLook(data, true);
+    if (recording && !(data.steps || []).length) {
+      lookStateEl.textContent = "recording. Click P on the tab, then use the page.";
+    }
+  } catch (e) {
+    lookStateEl.textContent = "desk unreachable";
+  }
+}
+
+function showLook(data, force) {
+  const rec = !!(data && data.recording);
+  lookRecordBtn.setAttribute("aria-pressed", rec ? "true" : "false");
+  lookRecordBtn.textContent = rec ? "Recording" : "Record";
+  if (!force && !rec) return;
+  const n = ((data && data.steps) || []).length;
+  if (rec) {
+    lookStateEl.textContent = n
+      ? n + (n === 1 ? " step" : " steps") + ". Use the page."
+      : "recording. Click P on the tab, then use the page.";
+    return;
+  }
+  lookStateEl.textContent = n
+    ? n + (n === 1 ? " step" : " steps") + ". Compile writes the editor."
+    : "stopped.";
+}
+
+async function pollLook() {
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await fetch("/api/look");
+    showLook(await r.json());
+  } catch (e) {}
+}
+
+async function compileLook() {
+  lookStateEl.textContent = "compiling…";
+  try {
+    const r = await fetch("/api/look/compile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) {
+      lookStateEl.textContent = data.error || ("not compiled: " + r.status);
+      showBroken(data.error);
+      return;
+    }
+    source.value = data.source || "";
+    bound = null;
+    saveState.textContent = "unsaved look";
+    lookStateEl.textContent = "compiled. Save to arm the tab you recorded.";
+  } catch (e) {
+    lookStateEl.textContent = "desk unreachable";
+  }
+}
+
 // A syntax error comes back with the line it broke on. Put the cursor there,
 // because hunting for line 34 by eye is the least pleasant part of a typo.
 function showBroken(message) {
@@ -744,6 +817,9 @@ saveBtn.addEventListener("click", save);
 writeBtn.addEventListener("click", writeAgent);
 proveBtn.addEventListener("click", () => prove());
 healBtn.addEventListener("click", healAgent);
+lookRecordBtn.addEventListener("click", () => setLook(true));
+lookStopBtn.addEventListener("click", () => setLook(false));
+lookCompileBtn.addEventListener("click", compileLook);
 askSkipBtn.addEventListener("click", () => answerAsk(""));
 jobEl.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter") {
@@ -786,3 +862,5 @@ pollAsk();
 setInterval(pollAsk, 800);
 pollMusts();
 setInterval(pollMusts, 4000);
+pollLook();
+setInterval(pollLook, 800);
