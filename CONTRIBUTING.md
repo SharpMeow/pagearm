@@ -22,4 +22,4 @@ Both should pass before you ping me.
 
 ## License
 
-The source is public so you can read it and send a PR. It is licensed under the Business Source License 1.1. See `LICENSE`. Use it yourself. Do not flip this into a store clone or a competing product.
+The source is public so you can read it and send a PR. It is licensed under the PolyForm Small Business License 1.0.0. See `LICENSE`. Individuals and small businesses may use it. Larger companies need a separate license.
